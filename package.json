@@ -1,0 +1,17 @@
+{
+  "name": "sports-insta",
+  "version": "1.0.0",
+  "private": true,
+  "description": "스포츠 데이터 → 카드 이미지 → 인스타그램 무인 게시 파이프라인",
+  "type": "commonjs",
+  "scripts": {
+    "fonts": "node scripts/setup-fonts.js",
+    "build": "node scripts/build.js",
+    "verify": "node scripts/verify.js",
+    "post": "node scripts/ig.js queue",
+    "status": "node scripts/ig.js status"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.65"
+  }
+}
