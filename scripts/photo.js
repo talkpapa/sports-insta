@@ -265,6 +265,14 @@ async function download(c) {
  */
 async function findPhotos(query, want = 1) {
   const E = env();
+
+  /* 검색어가 통하지 않을 때 물러설 자리.
+   *
+   * 제목이 검색어와 겹쳐야 한다는 규칙이 세서, 없는 장면을 찾으면 빈손이 되고
+   * 그 소재가 통째로 버려진다. 실제로 "stadium tunnel" 하나 때문에 다 만든 원고를
+   * 버렸다. 원고는 이미 값(무료 한도)을 치른 것이라 그대로 버리기 아깝다.
+   * 그래서 못 찾으면 축구 계정에서 어디에 붙여도 어색하지 않은 장면으로 물러선다. */
+  const FALLBACKS = ['empty football stadium', 'football pitch', 'football stadium seats'];
   const providers = E.PEXELS_KEY
     ? [{ p: pexels, key: E.PEXELS_KEY }, { p: openverse }]
     : [{ p: openverse }];
@@ -300,7 +308,17 @@ async function findPhotos(query, want = 1) {
     if (!got.length) log.info(`${p.name} — 후보는 있었지만 받아지지 않음`);
   }
 
-  if (got.length && got.length < want) {
+  if (!got.length) {
+    for (const alt of FALLBACKS) {
+      if (alt === query) continue;
+      log.info(`"${query}" 로 못 찾아 "${alt}" 로 물러섭니다.`);
+      const again = await findPhotos(alt, want);
+      if (again.length) return again;
+    }
+    return [];
+  }
+
+  if (got.length < want) {
     log.info(`사진 ${got.length}장만 구했습니다 (원한 ${want}장) — 돌려 씁니다.`);
   }
   return got;

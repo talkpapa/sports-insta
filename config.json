@@ -19,11 +19,18 @@
     "video.secondsLastCard": "마지막 카드만 따로. 답이 두세 문장이라 다 읽을 시간이 필요하다",
     "video.motion": "천천히 확대되는 움직임. false 면 정지 화면",
     "hosting.keepDays": "영상을 저장소에 며칠 남길지. 오래된 것은 지워 저장소를 가볍게 유지한다",
-    "news.keywords": "관심 낱말로 뉴스를 거른다. 비우면 전체 스포츠",
+    "news.keywords": "관심 낱말로 뉴스를 거른다. 비우면 전체. 지금은 이적시장만 남긴다",
     "write.model": "주력 모델. 무료 등급은 모델마다 하루 20건이라, 막히면 fallbacks 로 넘어간다"
   },
   "news": {
-    "keywords": []
+    "keywords": [
+      "transfer", "transfers", "sign", "signs", "signed", "signing", "signings",
+      "deal", "deals", "bid", "bids", "fee", "medical", "loan", "swap",
+      "joins", "join", "joined", "sold", "sell", "buy",
+      "contract", "contracts", "wages", "release clause", "buyout", "free agent",
+      "agreement", "agree", "agrees", "agreed", "offer", "offers", "offered",
+      "linked", "£", "€"
+    ]
   },
   "write": {
     "model": "gemini-3.5-flash",

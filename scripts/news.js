@@ -15,22 +15,37 @@
  */
 const { config, loadState, getJSON, log } = require('./lib/util.js');
 
-/* 언론사가 공개한 RSS. 여기서 받는 것은 제목·요약·링크뿐이다. */
+/* 언론사가 공개한 RSS. 여기서 받는 것은 제목·요약·링크뿐이다.
+ *
+ * ── 왜 이적시장만 보는가 ─────────────────────────────────
+ * 처음에는 종합 스포츠 피드를 썼다. 그런데 "BBC 가 쓴 것을 카드로 옮긴 것"은
+ * ESPN 공식 계정과 같은 자리에서 겨루는 일이라 볼 이유가 남과 다르지 않다.
+ *
+ * 이적 소식은 다르다. 협상은 며칠에서 몇 주에 걸쳐 이어지므로 경기 결과처럼
+ * 하루 만에 죽지 않고, 사람들이 저장하고 친구에게 보낸다. */
 const FEEDS = [
-  { name: 'ESPN',       url: 'https://www.espn.com/espn/rss/news' },
-  { name: 'BBC Sport',  url: 'https://feeds.bbci.co.uk/sport/rss.xml' },
-  { name: 'Sky Sports', url: 'https://www.skysports.com/rss/12040' },
-  { name: 'Yahoo',      url: 'https://sports.yahoo.com/rss/' },
+  { name: 'Sky Sports',  url: 'https://www.skysports.com/rss/11095' },             // 이적센터
+  { name: 'Guardian',    url: 'https://www.theguardian.com/football/transfer-window/rss' },
+  { name: 'BBC Sport',   url: 'https://feeds.bbci.co.uk/sport/football/rss.xml' },
+  { name: 'Guardian FC', url: 'https://www.theguardian.com/football/rss' },
+  { name: 'ESPN',        url: 'https://www.espn.com/espn/rss/soccer/news' },
 ];
 
 /* ── XML 을 최소한으로 읽는다 ────────────────────────────
  * RSS 는 모양이 단순해서 정규식으로 충분하다. 파서를 하나 더 끌어오면
  * 그것이 깨질 때 파이프라인 전체가 멈춘다. 의존성은 적을수록 좋다. */
-const strip = s => String(s || '')
-  .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+/* 실체(&lt; 등)를 먼저 풀고 나서 태그를 지운다.
+ * 순서가 반대면 &lt;p&gt; 로 실려 온 태그가 살아남아 원고에 <p> 가 박힌다.
+ * 실제로 가디언 요약이 그렇게 들어왔다. */
+const entities = s => s
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  .replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'")
+  .replace(/&nbsp;/g, ' ').replace(/&#8217;|&rsquo;/g, '’')
+  .replace(/&amp;/g, '&');                 // & 는 마지막에 — 이중 인코딩을 한 겹씩 푼다
+
+const strip = s => entities(entities(String(s || '')
+  .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')))
   .replace(/<[^>]+>/g, ' ')
-  .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-  .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
   .replace(/\s+/g, ' ')
   .trim();
 
@@ -109,10 +124,42 @@ async function collectNews(want = 5) {
     ...(st.recent_titles || []).slice(-60),
   ].filter(Boolean).map(fingerprint);
 
-  /* 관심 종목으로 거르기. 비어 있으면 거르지 않는다. */
-  const keywords = (cfg.news?.keywords || []).map(k => k.toLowerCase());
-  const matches = it => !keywords.length ||
-    keywords.some(k => (it.title + ' ' + it.summary).toLowerCase().includes(k));
+  /* 관심 낱말로 거르기. 비어 있으면 거르지 않는다.
+   *
+   * 낱말 경계를 본다. 그냥 포함 여부로 보면 "deal" 이 "dealing" 에, "sign" 이
+   * "designs" 에 걸려 엉뚱한 기사가 이적 소식으로 들어온다. 좁히려고 거르는
+   * 것이니 여기서 새면 좁힌 뜻이 없다.
+   * 다만 "£" 나 "€" 같은 기호는 낱말 경계가 없으므로 그대로 찾는다. */
+  const keywords = (cfg.news?.keywords || []).map(k => k.toLowerCase()).filter(Boolean);
+  const tests = keywords.map(k => {
+    if (!/^[a-z]/.test(k)) return { plain: k };
+    const esc = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return { re: new RegExp(`(^|[^a-z])${esc}([^a-z]|$)`, 'i') };
+  });
+  const matches = it => {
+    if (!tests.length) return true;
+    const text = (it.title + ' ' + it.summary).toLowerCase();
+    return tests.some(t => (t.re ? t.re.test(text) : text.includes(t.plain)));
+  };
+
+  /* 카드로 만들 수 없는 글을 걸러낸다.
+   *
+   * 이적 피드의 상당수는 하루 종일 갱신되는 실시간 블로그와 소문 모음이다
+   * ("Transfer Centre LIVE!", "transfer rumours: A to B? C to D?").
+   * 하나의 사실이 없어서 "제목 → 질문 → 답" 구조를 채울 수 없고, 억지로 쓰면
+   * 모델이 없는 내용을 지어내게 된다. 실제로 이것들만 후보로 올라온 적이 있다. */
+  const NOT_A_STORY = [
+    'live!', ' live blog', '– live', '- live', 'as it happened', 'clockwatch',
+    'rumours:', 'gossip', 'transfer talk:', 'round-up', 'roundup',
+    'quiz', 'podcast', 'newsletter', 'sign up', 'what to watch', 'best of',
+  ];
+  const isStory = it => {
+    const t = (it.title || '').toLowerCase();
+    if (NOT_A_STORY.some(w => t.includes(w))) return false;
+    /* 제목에 물음표가 둘 이상이면 여러 소문을 이어붙인 모음이다 */
+    if ((t.match(/\?/g) || []).length >= 2) return false;
+    return true;
+  };
 
   /* 매체를 번갈아 본다. 그냥 순서대로 훑으면 첫 매체가 후보를 다 차지해서
    * 하루치가 한 곳의 시각으로만 채워진다. 매체가 섞여야 소재도 섞인다. */
@@ -135,6 +182,7 @@ async function collectNews(want = 5) {
   for (const it of interleaved) {
     if (picked.length >= want) break;
     if (!matches(it)) continue;
+    if (!isStory(it)) continue;                       // 실시간 블로그·소문 모음
     if (it.title.length < 15) continue;               // 너무 짧으면 이야기가 없다
 
     const fp = fingerprint(it.title);
@@ -165,4 +213,68 @@ if (require.main === module) {
   })().catch(e => { log.fail(e.message); process.exit(1); });
 }
 
-module.exports = { collectNews, fingerprint, overlap, FEEDS };
+
+/* ── 원문 본문 받아오기 ──────────────────────────────────
+ * RSS 요약은 한두 문장뿐이다. "무슨 일이 있었나"는 알 수 있어도 "왜 그런가"는
+ * 담기지 않는다. 설명형 카드로 바꾼 뒤 여섯 건 중 넷이 "설명할 재료가 없다"며
+ * 건너뛰어졌다. 그래서 기사 본문을 읽어 원고 쓰는 쪽에 같이 넘긴다.
+ *
+ * 본문은 사실을 파악하는 데만 쓴다. 문장은 write.js 가 처음부터 새로 쓴다 —
+ * 사실은 남의 것이 아니지만 문장은 남의 것이다.
+ *
+ * 실패해도 그냥 빈 문자열을 돌려준다. 원문을 못 읽는 것은 흔한 일이고,
+ * 그때는 요약만 가지고 쓰다가 모자라면 그 소재를 건너뛰면 된다. */
+
+/* 기사가 아니라 사이트 껍데기인 문단을 가려내는 말들 */
+const CHROME = /sign in|skip to content|newsletter|cookie|subscription|follow us|©|all rights reserved|toggle caption|search jobs|edition|advertisement|share this|download the app/i;
+
+const MAX_BODY = 4000;      // 이보다 길면 앞부분만. 뒤로 갈수록 곁가지다.
+
+function articleText(html) {
+  let h = String(html)
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<figure[\s\S]*?<\/figure>/gi, ' ')      // 사진 설명은 본문이 아니다
+    .replace(/<aside[\s\S]*?<\/aside>/gi, ' ');
+
+  /* 본문 영역이 표시돼 있으면 그 안만 본다. 없으면 문서 전체에서 걸러낸다. */
+  const main = h.match(/<article[^>]*>([\s\S]*?)<\/article>/i)
+            || h.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
+  if (main) h = main[1];
+
+  const paras = [...h.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)]
+    .map(m => strip(m[1]))
+    .filter(t => t.length > 80)          // 짧은 것은 대개 링크나 라벨
+    .filter(t => /[.!?]/.test(t))        // 문장이 아니면 메뉴다
+    .filter(t => !CHROME.test(t))
+    /* 메뉴는 낱말마다 대문자로 시작한다 (Home News Sport Weather...).
+     * 진짜 문장은 그렇지 않다. */
+    .filter(t => {
+      const w = t.split(/\s+/);
+      return w.filter(x => /^[A-Z]/.test(x)).length / w.length < 0.45;
+    });
+
+  return paras.join('\n').slice(0, MAX_BODY);
+}
+
+/**
+ * 기사 본문을 받아 온다. 못 받으면 빈 문자열.
+ * @param {string} url
+ */
+async function fetchArticle(url) {
+  if (!url) return '';
+  try {
+    const r = await fetch(url, {
+      headers: { 'user-agent': 'Mozilla/5.0 (compatible; sports-insta/1.0; +https://github.com/talkpapa/sports-insta)' },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!r.ok) return '';
+    const type = r.headers.get('content-type') || '';
+    if (!/text\/html/.test(type)) return '';
+    return articleText(await r.text());
+  } catch {
+    return '';
+  }
+}
+
+module.exports = { collectNews, fetchArticle, articleText, fingerprint, overlap, FEEDS };

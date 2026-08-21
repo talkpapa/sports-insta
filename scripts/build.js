@@ -19,7 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const { ROOT, config, tzDate, prettyDateEn, loadState, saveState, log } = require('./lib/util.js');
-const { collectNews } = require('./news.js');
+const { collectNews, fetchArticle } = require('./news.js');
 const { writeScript } = require('./write.js');
 const { findPhotos, mergeCredits } = require('./photo.js');
 const { renderCards } = require('./render.js');
@@ -75,7 +75,7 @@ async function main() {
   /* ── ① 뉴스 ───────────────────────────────────── */
   /* 원고가 "이 소재는 쓰면 안 된다"고 되돌려 보내는 일이 있다(사망·사고 등).
    * 그래서 필요한 개수보다 넉넉히 받아 둔다. */
-  const news = await collectNews(perDay + 3);
+  const news = await collectNews(perDay + 5);
   if (!news.length) { log.warn('뉴스를 하나도 못 받았습니다 — 오늘은 넘어갑니다(실패 아님).'); return; }
 
   if (!DRY) {
@@ -100,6 +100,10 @@ async function main() {
     log.step(`[${made.length + 1}/${perDay}] ${item.title.slice(0, 64)}`);
 
     /* ── ② 원고 ── */
+    /* 기사 본문을 먼저 읽어 온다. 못 읽으면 요약만 가지고 쓴다. */
+    item.body = await fetchArticle(item.link);
+    if (item.body) log.info(`원문 ${item.body.length}자`);
+
     let plan;
     try { plan = await writeScript(item); }
     catch (e) { log.warn(`원고 실패 — ${e.message.split('\n')[0]}`); continue; }

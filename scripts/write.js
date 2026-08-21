@@ -28,7 +28,7 @@ const SCHEMA = {
   properties: {
     skip: { type: 'boolean', description: '카드뉴스로 만들면 안 되는 소재이거나 내용이 너무 빈약하면 true' },
     skip_reason: { type: 'string', description: 'skip 이 true 일 때의 이유. 아니면 빈 문자열' },
-    tag: { type: 'string', description: '카드 오른쪽 위 라벨. 영어 대문자 1~3단어. 예: TRANSFER ALERT, MLB, INJURY NEWS' },
+    tag: { type: 'string', description: '카드 오른쪽 위 라벨. 영어 대문자 1~3단어. 이적 계정이므로 이적 관련으로. 예: TRANSFER EXPLAINED, DEAL BREAKDOWN, FEE STRUCTURE, TALKS STALLED, RUMOUR CHECK' },
     slides: {
       type: 'array',
       description:
@@ -45,18 +45,34 @@ const SCHEMA = {
         required: ['headline', 'subhead'],
       },
     },
-    caption: { type: 'string', description: '인스타 캡션. 첫 줄은 125자 안의 훅. 이모지로 시작하는 3문단, 마지막에 질문 한 줄. 해시태그는 넣지 않는다' },
-    hashtags: { type: 'array', description: '10~15개. # 없이 낱말만. 영어', items: { type: 'string' } },
-    photo_query: { type: 'string', description: '무료 스톡 사진 검색어. 영어 2~4단어. 실존 인물·구단 로고가 아니라 장면. 예: soccer stadium night' },
+    caption: { type: 'string', description: '인스타 캡션. 첫 줄은 125자 안의 훅. 이모지로 시작하는 3문단으로, 카드가 못 담은 배경과 숫자를 더 풀어 쓴다(나중에 다시 보려고 저장할 만한 내용이어야 한다). 마지막에 질문 한 줄. 해시태그는 넣지 않는다' },
+    hashtags: { type: 'array', description: '10~15개. # 없이 낱말만. 영어. 이적 관련(transfernews, transferwindow 등)과 등장하는 구단·선수를 섞는다', items: { type: 'string' } },
+    photo_query: { type: 'string', description: '무료 스톡 사진 검색어. 영어 2~4단어. 실존 인물·구단 로고가 아니라 축구 장면. 예: empty football stadium, football boots grass' },
     alt_text: { type: 'string', description: '접근성용 대체 텍스트. 사진에 무엇이 보이는지 영어 한 문장' },
   },
   required: ['skip', 'skip_reason', 'tag', 'slides', 'caption', 'hashtags', 'photo_query', 'alt_text'],
 };
 
-const SYSTEM = `You write Instagram carousel scripts for a sports news account.
+const SYSTEM = `You write Instagram carousel scripts for a football transfer account.
 
-Turn a news headline and short summary into a three-card story that a reader
-finishes in about 15 seconds.
+Every post is about the football transfer market: deals, fees, contracts, loans,
+negotiations. Turn a news headline and short summary into a three-card story a
+reader finishes in about 18 seconds.
+
+YOUR JOB IS TO EXPLAIN, NOT TO REPORT.
+
+A reader can get "Club A signed Player B" anywhere, from the club itself, faster than
+from us. What they cannot get quickly is WHY it happened and what it means. So never
+stop at the event. Every post must answer a "why" or a "how":
+
+  - why this club needs this player right now
+  - why the fee is that number, and how it is structured
+  - why the selling club agreed, or refused
+  - why the deal collapsed, stalled, or suddenly moved
+  - what it unlocks next — who leaves, who arrives, what budget is freed
+
+If the source contains no explanation anywhere in it, set skip=true. A card that only
+restates the headline is worth nothing.
 
 The three cards have different jobs. Do not write three variations of the same thing.
 
@@ -65,38 +81,52 @@ The three cards have different jobs. Do not write three variations of the same t
     subhead:  one short line that frames it. Under 12 words.
 
   Card 2 — THE QUESTION.
-    headline: an actual question ending in "?", 4-8 words. It must be the question
-              a reader would ask after card 1.
-    subhead:  the setup the question needs — what happened, who is involved, why it
-              matters right now. Under 20 words. This is where the story lives.
+    headline: a "why" or "how" question ending in "?", 4-8 words. It must be the
+              question a reader would actually ask after card 1. Strongly prefer
+              openings like "Why", "How", "What made", "Who pays". Never ask a
+              yes/no question, and never ask something the source cannot answer.
+    subhead:  the setup the question needs — the situation behind it. Under 20 words.
 
   Card 3 — THE ANSWER.
-    headline: the answer in 2-5 words. Blunt and concrete.
-    subhead:  the detailed answer, 35-55 words across 2-3 full sentences. Give the
-              specifics: numbers, names, dates, what happens next. This is the payoff —
-              a reader who only saw card 3 should still learn something.
+    headline: the reason in 2-5 words. Blunt and concrete.
+    subhead:  the explanation, 35-55 words across 2-3 full sentences. Give the
+              mechanics: the numbers, the contract situation, the squad gap it fills,
+              what happens next. A reader who saw only this card should come away
+              understanding something they did not know before.
 
-Card 2's question must be genuinely answered by card 3. Never ask something the source
-does not answer, and never end on "time will tell" or "we'll find out soon".
+Card 2's question must be genuinely answered by card 3. Never end on "time will tell"
+or "we'll find out soon" — that is the opposite of the job.
 
 Hard rules:
 - Write everything from scratch. Never copy or lightly reword the source's sentences.
 - State only what the source supports. If a detail isn't in the input, leave it out.
   Never invent scores, quotes, dates, transfer fees, or medical details.
+- Separate fact from rumour. Transfer coverage is full of unconfirmed reports. If the
+  source says "sources say", "reportedly", "is understood to", "linked with" or similar,
+  your cards must carry the same hedge — "reports say", "according to sources". Never
+  upgrade a rumour into a completed deal. Getting this wrong destroys the account's
+  credibility faster than anything else.
 - If the source is thin, write a shorter, plainer story rather than padding it with invention.
 - Set skip=true for deaths, serious injuries with lasting harm, crime, lawsuits, or
   anything where a punchy card would read as callous. Also skip if the input is too
-  thin to fill three cards honestly.
-- photo_query must describe a generic photographic scene, never a named person, team,
-  or logo. It must be something a stock photo library would actually have as a photo —
-  not a painting, not a diagram. Prefer concrete scenes: "floodlit football pitch",
-  "baseball glove close up", "empty locker room".
+  thin to explain anything honestly.
+- photo_query must be chosen from this exact list, and nothing else:
+    "empty football stadium"    "football pitch"        "football boots grass"
+    "soccer ball grass"         "football stadium seats" "goal net close up"
+    "football training ground"
+  These are the only queries the free photo libraries reliably answer. Anything else —
+  "stadium tunnel", "empty locker room", "corner flag close up" — returns nothing and
+  the whole story gets dropped. Pick whichever of the seven best suits the story.
+  Never name a person, team, or logo.
 
 Style:
 - Card headlines are display type: short, no period, strong nouns and verbs.
 - The caption's first line decides whether anyone reads on. Make it the specific
   surprising thing, not a category label.
-- Plain, confident English. No hype words like SHOCKING or "you won't believe".`;
+- Plain, confident English. No hype words like SHOCKING or "you won't believe".
+- Write for someone who already follows football. Use the real vocabulary —
+  release clause, add-ons, sell-on fee, amortisation, free agent, buy-back —
+  and explain a term only when the story turns on it.`;
 
 function apiKey() {
   const key = env().GEMINI_API_KEY;
@@ -149,10 +179,14 @@ async function writeScript(item) {
 }
 
 async function askModel(model, item) {
+  /* 본문이 있으면 같이 넘긴다. 요약만으로는 "왜 그런가"가 담기지 않아서,
+   * 설명형으로 바꾼 뒤 여섯 건 중 넷이 "설명할 재료가 없다"며 건너뛰어졌다.
+   * 본문은 사실을 파악하는 데만 쓰고, 문장은 여전히 처음부터 새로 쓴다. */
   const input = [
     `Source: ${item.source}`,
     `Headline: ${item.title}`,
     item.summary ? `Summary: ${item.summary}` : '',
+    item.body ? `\nFull article (facts only — never reuse its sentences):\n${item.body}` : '',
   ].filter(Boolean).join('\n');
 
   const body = {
