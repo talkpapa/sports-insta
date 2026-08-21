@@ -112,9 +112,16 @@ async function makeVideo(cardPaths, outPath, opts = {}) {
   }
   if (n === 1) parts.push('[v0]null[vout]');
 
-  /* 소리는 앞뒤를 부드럽게 —  갑자기 시작하고 뚝 끊기면 귀에 거슬린다. */
+  /* 소리는 앞뒤를 부드럽게 —  갑자기 시작하고 뚝 끊기면 귀에 거슬린다.
+   *
+   * 곡마다 녹음된 크기가 제각각이다. 그대로 두면 어떤 날은 귀가 아프고 어떤 날은
+   * 들리지도 않는다. loudnorm 으로 -14 LUFS 에 맞춘다 — 인스타·유튜브가 쓰는
+   * 기준값이라, 앱이 다시 손대지 않는다. TP=-1.5 는 압축될 때 소리가 깨지지
+   * 않도록 꼭대기를 눌러두는 것이다.
+   * loudnorm 은 출력 표본율을 바꾸므로 뒤에서 44100 으로 되돌린다. */
   const aIdx = n;
-  parts.push(`[${aIdx}:a]atrim=0:${total.toFixed(3)},asetpts=N/SR/TB,afade=t=in:st=0:d=0.4,afade=t=out:st=${(total - 0.6).toFixed(3)}:d=0.6[aout]`);
+  const level = audio ? 'loudnorm=I=-14:TP=-1.5:LRA=11,aresample=44100,' : '';
+  parts.push(`[${aIdx}:a]atrim=0:${total.toFixed(3)},asetpts=N/SR/TB,${level}afade=t=in:st=0:d=0.4,afade=t=out:st=${(total - 0.6).toFixed(3)}:d=0.6[aout]`);
 
   args.push(
     '-filter_complex', parts.join(';'),
