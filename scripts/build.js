@@ -1,49 +1,60 @@
-/* build.js — 하루치 게시물을 통째로 만든다. 하루 여러 개를 "슬롯"으로 나눠 만든다.
+/* build.js — 하루치 릴스를 통째로 만든다.
  *
  *   node scripts/build.js            오늘 것을 만든다 (config.publish.perDay 개)
- *   node scripts/build.js --dry      만들되 파일을 쓰지 않고 보여만 준다
- *   node scripts/build.js --force    이미 만들어 둔 것이 있어도 다시 만든다
+ *   node scripts/build.js --dry      만들되 파일을 쓰지 않는다
+ *   node scripts/build.js --force    이미 만들어 뒀어도 다시 만든다
+ *   node scripts/build.js --one      한 개만 (시험용)
  *
  * 하는 일
- *   ① 데이터를 perDay 개만큼 받고   (collect.js)
- *   ② 슬롯마다 카드를 그리고        (render.js)  → docs/cards/<날짜>/<슬롯>/01.png ...
- *   ③ 슬롯마다 캡션을 짓고          (caption.js)
- *   ④ 슬롯마다 큐 파일을 남긴다                  → queue/<날짜>/01.md ... 06.md
+ *   ① 뉴스를 모으고            (news.js)
+ *   ② 원고를 쓰고              (write.js)   — Gemini
+ *   ③ 사진을 구하고            (photo.js)   — Openverse / Pexels
+ *   ④ 카드를 그리고            (render.js)  → 1080×1920 세 장
+ *   ⑤ 영상으로 잇고            (video.js)   → reel.mp4
+ *   ⑥ 큐 파일을 남긴다                      → queue/<날짜>/<슬롯>.md
  *
- * 슬롯으로 나누는 이유
- *   하루 6개를 한 파일에 몰아 넣으면, 3번째에서 실패했을 때 무엇이 나갔고
- *   무엇이 안 나갔는지 알 수 없다. 슬롯을 파일 하나씩으로 쪼개 두면
- *   나간 것은 _done 으로 옮겨지고 남은 것은 그대로 남아, 다음 시각에 이어서 나간다.
- *
- * 카드를 docs/ 아래에 두는 이유
- *   인스타 API 는 로컬 파일을 받지 않고 공개 주소만 받는다. docs/ 를 GitHub Pages 로
- *   열어두면 커밋하는 순간 그 카드가 주소를 갖는다. 별도 서버도 결제도 필요 없다.
+ * 영상을 docs/ 아래에 두는 이유: 인스타 API 는 로컬 파일을 받지 않고 공개 주소만
+ * 받는다. docs/ 를 GitHub Pages 로 열어두면 커밋하는 순간 주소가 생긴다.
  */
 const fs = require('fs');
 const path = require('path');
-const { ROOT, config, tzDate, loadState, saveState, log } = require('./lib/util.js');
-const { collectMany } = require('./collect.js');
+const { ROOT, config, tzDate, prettyDateEn, loadState, saveState, log } = require('./lib/util.js');
+const { collectNews } = require('./news.js');
+const { writeScript } = require('./write.js');
+const { findPhoto } = require('./photo.js');
 const { renderCards } = require('./render.js');
-const { buildCaption } = require('./caption.js');
+const { makeVideo, hasFfmpeg, pickAudio } = require('./video.js');
 
 const DRY   = process.argv.includes('--dry');
 const FORCE = process.argv.includes('--force');
+const ONE   = process.argv.includes('--one');
 
 const pad2 = n => String(n).padStart(2, '0');
+
+/* 영상은 한 편에 6~8MB 다. 하루 3편이면 한 달에 600MB —
+ * 저장소가 금세 무거워지고 clone 이 느려진다. 나간 지 오래된 것은 지운다.
+ * 인스타는 게시할 때 영상을 자기 서버로 복사해 가므로 원본이 없어도 게시물은 남는다. */
+function pruneOldReels(keepDays) {
+  const dir = path.join(ROOT, 'docs', 'reels');
+  if (!fs.existsSync(dir)) return 0;
+  const days = fs.readdirSync(dir).filter(f => /^\d{4}-\d{2}-\d{2}$/.test(f)).sort();
+  const drop = days.slice(0, Math.max(0, days.length - keepDays));
+  for (const d of drop) fs.rmSync(path.join(dir, d), { recursive: true, force: true });
+  return drop.length;
+}
 
 async function main() {
   const cfg = config();
   const tz = cfg.account?.timezone || 'Asia/Seoul';
   const today = tzDate(0, tz);
-  const perDay = Math.max(1, Math.min(20, cfg.publish?.perDay || 1));
+  const perDay = ONE ? 1 : Math.max(1, Math.min(10, cfg.publish?.perDay || 3));
   const st = loadState();
 
   const queueDir = path.join(ROOT, 'queue', today);
   const doneDir  = path.join(ROOT, 'queue', '_done', today);
 
-  /* ── 이미 만들어 뒀으면 다시 만들지 않는다 ────────────
-   * 하루에 두 번 도는 일이 생겨도, 이미 나간 것을 되살리거나
-   * 남은 슬롯을 다른 소재로 바꿔치기하면 안 된다. */
+  /* 이미 만들어 뒀으면 다시 만들지 않는다 — 하루에 두 번 돌아도
+   * 나간 것을 되살리거나 남은 슬롯을 다른 소재로 바꿔치지 않게. */
   const already = (fs.existsSync(queueDir) && fs.readdirSync(queueDir).length)
                || (fs.existsSync(doneDir)  && fs.readdirSync(doneDir).length);
   if (!FORCE && !DRY && already) {
@@ -51,116 +62,157 @@ async function main() {
     return;
   }
 
-  /* ── 호스팅 주소가 없으면 시작도 하지 않는다 ──────────
-   * 카드를 다 그린 뒤에 주소가 없다고 멈추면 헛일이 된다. */
   const base = (cfg.hosting?.pagesBase || '').replace(/\/+$/, '');
   if (!base && !DRY) {
-    throw new Error('config.json 의 hosting.pagesBase 가 비어 있습니다.\n' +
-      '   예: "https://내아이디.github.io/sports-insta"');
+    throw new Error('config.json 의 hosting.pagesBase 가 비어 있습니다.');
   }
 
-  /* ── ① 데이터 ─────────────────────────────────── */
-  const materials = await collectMany(perDay, st.league_cursor || 0);
-  if (!materials.length) {
-    log.warn('오늘 쓸 소재가 하나도 없습니다 — 큐를 만들지 않고 끝냅니다(실패 아님).');
-    return;
+  if (!DRY && !await hasFfmpeg()) {
+    throw new Error('ffmpeg 이 없습니다. GitHub Actions 에는 기본으로 있고,\n' +
+      '   이 컴퓨터에서 돌리시려면: winget install Gyan.FFmpeg');
   }
+
+  /* ── ① 뉴스 ───────────────────────────────────── */
+  /* 원고가 "이 소재는 쓰면 안 된다"고 되돌려 보내는 일이 있다(사망·사고 등).
+   * 그래서 필요한 개수보다 넉넉히 받아 둔다. */
+  const news = await collectNews(perDay + 3);
+  if (!news.length) { log.warn('뉴스를 하나도 못 받았습니다 — 오늘은 넘어갑니다(실패 아님).'); return; }
 
   if (!DRY) {
     fs.rmSync(queueDir, { recursive: true, force: true });
     fs.mkdirSync(queueDir, { recursive: true });
   }
 
-  /* ── ②③④ 슬롯마다 카드·캡션·큐 ───────────────── */
   const made = [];
-  for (let i = 0; i < materials.length; i++) {
-    const slot = pad2(i + 1);
-    const data = materials[i];
+  let slot = 0;
 
-    log.step(`슬롯 ${slot} · ${data.league.name} · ${data.kind}`);
+  for (const item of news) {
+    if (made.length >= perDay) break;
 
-    const cards = renderCards(data, {
+    log.step(`[${made.length + 1}/${perDay}] ${item.title.slice(0, 64)}`);
+
+    /* ── ② 원고 ── */
+    let plan;
+    try { plan = await writeScript(item); }
+    catch (e) { log.warn(`원고 실패 — ${e.message.split('\n')[0]}`); continue; }
+
+    if (plan.skip) { log.info(`건너뜀 — ${plan.skip_reason}`); continue; }
+    log.ok(`원고 · ${plan.slides.map(s => s.headline).join(' / ')}`);
+
+    /* ── ③ 사진 ── */
+    const photo = await findPhoto(plan.photo_query);
+    if (!photo) { log.warn(`사진을 못 찾음 ("${plan.photo_query}") — 이 소재는 넘깁니다`); continue; }
+
+    if (DRY) { made.push({ item, plan, credit: photo.credit }); continue; }
+
+    slot++;
+    const id = pad2(slot);
+    const outDir = path.join(ROOT, 'docs', 'reels', today, id);
+    fs.mkdirSync(outDir, { recursive: true });
+
+    /* ── ④ 카드 ── */
+    const cards = await renderCards(plan, photo.buffer, {
       handle: cfg.account?.handle || '',
-      maxSlides: cfg.publish?.maxSlides || 8,
+      date: prettyDateEn(today),
     });
-    const caption = buildCaption(data, cfg);
-    log.info(`카드 ${cards.length}장 · 캡션 ${caption.length}자 · 첫 줄 "${caption.split('\n')[0].slice(0, 40)}"`);
-
-    if (DRY) { made.push({ slot, data, cards: cards.length }); continue; }
-
-    const cardDir = path.join(ROOT, 'docs', 'cards', today, slot);
-    fs.rmSync(cardDir, { recursive: true, force: true });
-    fs.mkdirSync(cardDir, { recursive: true });
-
-    const urls = [];
+    const cardPaths = [];
     for (const c of cards) {
-      fs.writeFileSync(path.join(cardDir, c.name), c.buffer);
-      urls.push(`${base}/cards/${today}/${slot}/${c.name}`);
+      const p = path.join(outDir, c.name);
+      fs.writeFileSync(p, c.buffer);
+      cardPaths.push(p);
     }
+    /* 첫 장은 표지로도 쓴다 — 릴스 목록에 보이는 그림이다 */
+    fs.copyFileSync(cardPaths[0], path.join(outDir, 'cover.png'));
 
-    fs.writeFileSync(path.join(queueDir, slot + '.md'),
-      queueMarkdown(data, urls, caption, slot), 'utf8');
-    made.push({ slot, data, cards: cards.length });
+    /* ── ⑤ 영상 ── */
+    const video = await makeVideo(cardPaths, path.join(outDir, 'reel.mp4'), {
+      secondsPerCard: cfg.video?.secondsPerCard,
+      fade: cfg.video?.fade,
+      motion: cfg.video?.motion,
+      audio: pickAudio(Number(today.replace(/-/g, '')) + slot),
+    });
+    log.ok(`영상 ${video.seconds.toFixed(1)}초 · ${(video.bytes / 1024 / 1024).toFixed(1)}MB · 소리 ${video.hasAudio ? '있음' : '무음'}`);
+
+    /* ── ⑥ 큐 ── */
+    const videoUrl = `${base}/reels/${today}/${id}/reel.mp4`;
+    const coverUrl = `${base}/reels/${today}/${id}/cover.png`;
+    fs.writeFileSync(path.join(queueDir, id + '.md'),
+      queueMarkdown({ id, today, plan, item, photo, video, videoUrl, coverUrl }), 'utf8');
+
+    made.push({ item, plan, credit: photo.credit, seconds: video.seconds });
   }
 
   if (DRY) {
     log.step(`--dry — ${made.length}개를 만들 수 있습니다. 파일은 쓰지 않았습니다.`);
-    made.forEach(m => console.log(`  ${m.slot}. ${m.data.league.name} · ${m.data.kind} · 카드 ${m.cards}장`));
+    made.forEach((m, i) => console.log(`  ${pad2(i + 1)}. ${m.plan.slides[0].headline} — ${m.item.source}`));
     return;
   }
 
-  log.step(`완성 — 슬롯 ${made.length}개`);
-  made.forEach(m => console.log(`  ${m.slot}. ${m.data.league.name} · ${m.data.kind} · 카드 ${m.cards}장`));
+  if (!made.length) {
+    log.warn('쓸 만한 소재가 없었습니다 — 큐를 만들지 않고 끝냅니다(실패 아님).');
+    return;
+  }
 
-  /* 다음 날에는 다른 리그가 앞자리에 오도록 순번을 민다 */
-  const leagues = cfg.leagues || [];
-  st.league_cursor = ((st.league_cursor || 0) + materials.length) % Math.max(leagues.length, 1);
+  /* 나간 이야기를 기억해 둔다 — 내일 같은 소식을 또 올리지 않기 위해 */
+  st.recent_titles = [...(st.recent_titles || []), ...made.map(m => m.item.title)].slice(-60);
   saveState(st);
 
+  const pruned = pruneOldReels(cfg.hosting?.keepDays ?? 14);
+  if (pruned) log.info(`오래된 영상 ${pruned}일치 정리`);
+
   writeIndex(cfg);
-  log.step('이제 커밋하면 Pages 에 카드가 올라가고, 슬롯 시각마다 하나씩 나갑니다.');
+
+  log.step(`완성 — ${made.length}편`);
+  made.forEach((m, i) => console.log(`  ${pad2(i + 1)}. ${m.plan.slides[0].headline} · ${m.seconds.toFixed(0)}초 · ${m.credit}`));
+  log.info('커밋하면 Pages 에 올라가고, 게시 시각에 나갑니다.');
 }
 
-/** 큐 파일 — 사람이 열어봐도 무엇이 나갈지 한눈에 보이게 쓴다 */
-function queueMarkdown(d, urls, caption, slot) {
+/** 큐 파일 — 사람이 열어봐도 무엇이 나갈지 한눈에 보이게 */
+function queueMarkdown({ id, today, plan, item, photo, video, videoUrl, coverUrl }) {
+  const caption = [
+    plan.caption.trim(),
+    '',
+    photo.credit,
+    '',
+    '#' + plan.hashtags.join(' #'),
+  ].join('\n');
+
   return [
     '---',
-    'slot: ' + slot,
-    'kind: ' + d.kind,
-    'league: ' + d.league.key,
-    'date: ' + d.date,
-    'source: ' + d.source,
-    'images:',
-    ...urls.map(u => '  - ' + u),
+    'slot: ' + id,
+    'date: ' + today,
+    'seconds: ' + video.seconds.toFixed(1),
+    'video: ' + videoUrl,
+    'cover: ' + coverUrl,
+    'source: ' + item.source,
+    'source_title: ' + item.title.replace(/\n/g, ' '),
+    'photo_query: ' + plan.photo_query,
+    'alt_text: ' + (plan.alt_text || '').replace(/\n/g, ' '),
     '---',
   ].join('\n') + '\n' + caption + '\n';
 }
 
-/** docs/index.html — Pages 첫 화면. 만든 카드를 눈으로 확인할 수 있게 한다. */
+/** docs/index.html — 만든 릴스를 눈으로 확인하는 보관함 */
 function writeIndex(cfg) {
-  const dir = path.join(ROOT, 'docs', 'cards');
+  const dir = path.join(ROOT, 'docs', 'reels');
   const days = fs.existsSync(dir)
-    ? fs.readdirSync(dir).filter(f => /^\d{4}-\d{2}-\d{2}$/.test(f)).sort().reverse().slice(0, 14)
+    ? fs.readdirSync(dir).filter(f => /^\d{4}-\d{2}-\d{2}$/.test(f)).sort().reverse()
     : [];
 
   const blocks = days.map(day => {
     const dayDir = path.join(dir, day);
     const slots = fs.readdirSync(dayDir).filter(s => fs.statSync(path.join(dayDir, s)).isDirectory()).sort();
-    const rows = slots.map(slot => {
-      const imgs = fs.readdirSync(path.join(dayDir, slot)).filter(f => f.endsWith('.png')).sort();
-      const thumbs = imgs.map(f =>
-        `<a href="cards/${day}/${slot}/${f}"><img src="cards/${day}/${slot}/${f}" loading="lazy" alt="${day} ${slot} ${f}"></a>`
-      ).join('');
-      return `<div class="slot"><b>${slot}</b><div class="row">${thumbs}</div></div>`;
-    }).join('');
-    return `<section><h2>${day} <span>${slots.length}개</span></h2>${rows}</section>`;
+    const cells = slots.map(s =>
+      `<figure><video src="reels/${day}/${s}/reel.mp4" poster="reels/${day}/${s}/cover.png" controls preload="none" playsinline></video><figcaption>${s}</figcaption></figure>`
+    ).join('');
+    return `<section><h2>${day} <span>${slots.length}편</span></h2><div class="row">${cells}</div></section>`;
   }).join('\n');
 
   const html = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
-<title>${cfg.account?.brand || '카드 보관함'}</title>
+<title>${cfg.account?.brand || '릴스 보관함'}</title>
 <style>
   :root { color-scheme: dark; }
   body { margin:0; padding:24px; background:#0B0E14; color:#E7ECF3;
@@ -170,14 +222,14 @@ function writeIndex(cfg) {
   section { margin-bottom:34px; }
   h2 { font-size:15px; margin:0 0 12px; font-weight:600; }
   h2 span { color:#9AA6B8; font-weight:400; }
-  .slot { margin-bottom:14px; }
-  .slot b { color:#F7C63F; font-size:13px; }
-  .row { display:flex; gap:10px; overflow-x:auto; padding:6px 0; }
-  .row img { height:200px; border-radius:10px; display:block; }
+  .row { display:flex; gap:14px; overflow-x:auto; padding-bottom:8px; }
+  figure { margin:0; }
+  video { height:420px; border-radius:12px; display:block; background:#000; }
+  figcaption { color:#9AA6B8; font-size:12px; margin-top:6px; }
 </style>
-<h1>${cfg.account?.brand || '카드 보관함'}</h1>
-<p class="note">인스타에 나가는 카드입니다. 이 주소는 인스타 서버가 그림을 가져가는 데 쓰입니다.</p>
-${blocks || '<p class="note">아직 만든 카드가 없습니다.</p>'}
+<h1>${cfg.account?.brand || '릴스 보관함'}</h1>
+<p class="note">인스타에 나가는 릴스입니다. 이 주소는 인스타 서버가 영상을 가져가는 데 쓰입니다.</p>
+${blocks || '<p class="note">아직 만든 릴스가 없습니다.</p>'}
 `;
   fs.writeFileSync(path.join(ROOT, 'docs', 'index.html'), html, 'utf8');
 }

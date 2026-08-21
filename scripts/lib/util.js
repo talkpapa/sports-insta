@@ -53,6 +53,14 @@ function prettyDate(ymd) {
   return Number(m) + '월 ' + Number(dd) + '일 (' + wd + ')';
 }
 
+
+/* 카드에 찍을 영어 날짜 — "AUGUST 21, 2026".
+ * 계정은 영어로 운영하므로 카드 위 날짜도 영어여야 한다. */
+function prettyDateEn(ymd) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC", year: "numeric", month: "long", day: "numeric",
+  }).format(new Date(ymd + "T12:00:00Z"));
+}
 /* UTC 타임스탬프를 계정 시간대의 "HH:MM" 으로.
  * 데이터 제공처는 UTC 로 주는데 보는 사람은 한국 시간으로 읽는다. */
 function tzTime(iso, tz = 'Asia/Seoul') {
@@ -104,4 +112,4 @@ const log = {
   fail: m => console.error('  ❌ ' + m),
 };
 
-module.exports = { ROOT, config, env, tzDate, tzTime, prettyDate, loadState, saveState, getJSON, sleep, log };
+module.exports = { ROOT, config, env, tzDate, tzTime, prettyDate, prettyDateEn, loadState, saveState, getJSON, sleep, log };

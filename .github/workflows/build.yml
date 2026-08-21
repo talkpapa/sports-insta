@@ -1,18 +1,14 @@
-# 카드 만들기 — 매일 아침 한 번, 하루치 6개를 통째로 만든다.
+# 릴스 만들기 — 매일 아침 한 번, 하루치를 통째로 만든다.
 #
-# ── 시각을 아침 9시(한국)로 잡은 이유 ────────────────────────────
-# 이 파이프라인은 "어제 경기 결과"를 받는다. 그런데 데이터 제공처는 UTC 날짜로
-# 경기를 묶는다. 한국시간 아침 9시가 정확히 UTC 자정이라, 이 순간이 되어야
-# "어제(UTC)" 가 완전히 끝난 상태가 된다.
-#
-# 더 이르게 잡으면 — 예를 들어 새벽 5시(전날 UTC 20시) — 유럽 밤경기가 아직
-# 진행 중이라 결과가 비거나 반쪽만 온다. 하루 종일 그 반쪽으로 게시하게 된다.
+# ── 아침 9시(한국)인 이유 ────────────────────────────────────
+# 미국·유럽 경기가 우리 새벽에 끝난다. 한국시간 아침이면 그 소식이 이미
+# RSS 에 올라와 있다. 더 이르게 잡으면 밤사이 소식을 놓친다.
 #
 # ── 게시와 따로 도는 이유 ────────────────────────────────────
-# 카드는 GitHub Pages 에 올라가야 인스타가 가져갈 수 있는데, 커밋 후 실제
+# 영상은 GitHub Pages 에 올라가야 인스타가 가져갈 수 있는데, 커밋 후 실제
 # 반영까지 몇 분 걸린다. 만들자마자 올리면 아직 없는 주소를 가지러 갔다 실패한다.
-# 그래서 아침에 만들어 두고 첫 게시는 두 시간 뒤부터 시작한다.
-name: 카드 만들기
+# 그래서 아침에 만들어 두고 첫 게시는 점심때 시작한다.
+name: 릴스 만들기
 
 on:
   schedule:
@@ -29,6 +25,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -42,14 +39,22 @@ jobs:
       - name: 서체 준비
         run: npm run fonts
 
-      # 리그 10개를 훑느라 3분쯤 걸린다 (제공처 요청 한도 때문에 쉬어 간다)
-      - name: 데이터 받아 카드·캡션·큐 만들기
+      # ubuntu 러너에는 대개 들어 있지만, 없을 때 조용히 실패하지 않도록 확인한다.
+      - name: ffmpeg 확인
+        run: |
+          if ! command -v ffmpeg > /dev/null; then
+            echo "ffmpeg 이 없어 설치합니다"
+            sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          fi
+          ffmpeg -version | head -1
+
+      - name: 뉴스 → 원고 → 사진 → 카드 → 영상
         env:
-          FOOTBALL_DATA_KEY: ${{ secrets.FOOTBALL_DATA_KEY }}
-          SPORTSDB_KEY: ${{ secrets.SPORTSDB_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_KEY: ${{ secrets.PEXELS_KEY }}
         run: node scripts/build.js
 
-      - name: 만든 것 커밋 (이때 Pages 에 카드가 올라간다)
+      - name: 만든 것 커밋 (이때 Pages 에 영상이 올라간다)
         run: |
           git config user.name  "sports-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -57,6 +62,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "만들 것이 없었습니다 — 커밋 생략"
           else
-            git commit -m "카드 준비: $(TZ=Asia/Seoul date +%F)"
+            git commit -m "릴스 준비: $(TZ=Asia/Seoul date +%F)"
+            git pull --rebase --autostash || true
             git push
           fi

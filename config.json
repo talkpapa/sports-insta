@@ -4,161 +4,32 @@
     "brand": "SPORTS NEWS STATION",
     "timezone": "Asia/Seoul"
   },
-  "provider": "footballdata",
-  "leagues": [
-    {
-      "key": "epl",
-      "name": "프리미어리그",
-      "short": "EPL",
-      "sport": "축구",
-      "sportsdbId": "4328",
-      "footballDataCode": "PL",
-      "season": "auto"
-    },
-    {
-      "key": "laliga",
-      "name": "라리가",
-      "short": "LALIGA",
-      "sport": "축구",
-      "sportsdbId": "4335",
-      "footballDataCode": "PD",
-      "season": "auto"
-    },
-    {
-      "key": "seriea",
-      "name": "세리에 A",
-      "short": "SERIE A",
-      "sport": "축구",
-      "sportsdbId": "4332",
-      "footballDataCode": "SA",
-      "season": "auto"
-    },
-    {
-      "key": "bundes",
-      "name": "분데스리가",
-      "short": "BUNDES",
-      "sport": "축구",
-      "sportsdbId": "4331",
-      "footballDataCode": "BL1",
-      "season": "auto"
-    },
-    {
-      "key": "ligue1",
-      "name": "리그앙",
-      "short": "LIGUE 1",
-      "sport": "축구",
-      "sportsdbId": "4334",
-      "footballDataCode": "FL1",
-      "season": "auto"
-    },
-    {
-      "key": "ucl",
-      "name": "챔피언스리그",
-      "short": "UCL",
-      "sport": "축구",
-      "sportsdbId": "4480",
-      "footballDataCode": "CL",
-      "season": "auto"
-    },
-    {
-      "key": "eredivisie",
-      "name": "에레디비시",
-      "short": "EREDIV",
-      "sport": "축구",
-      "sportsdbId": "4337",
-      "footballDataCode": "DED",
-      "season": "auto"
-    },
-    {
-      "key": "primeira",
-      "name": "프리메이라리가",
-      "short": "PRIMEIRA",
-      "sport": "축구",
-      "sportsdbId": "4344",
-      "footballDataCode": "PPL",
-      "season": "auto"
-    },
-    {
-      "key": "brasil",
-      "name": "브라질 세리에 A",
-      "short": "BRASIL",
-      "sport": "축구",
-      "sportsdbId": "4351",
-      "footballDataCode": "BSA",
-      "season": "auto"
-    },
-    {
-      "key": "champ",
-      "name": "챔피언십",
-      "short": "CHAMP",
-      "sport": "축구",
-      "sportsdbId": "4329",
-      "footballDataCode": "ELC",
-      "season": "auto"
-    }
-  ],
   "publish": {
     "perDay": 3,
-    "maxSlides": 8,
-    "minGapHours": 1.5,
-    "language": "ko"
+    "minGapHours": 1.5
   },
   "hosting": {
-    "pagesBase": "https://talkpapa.github.io/sports-insta"
-  },
-  "hashtags": {
-    "공통": [
-      "#스포츠",
-      "#해외축구",
-      "#축구",
-      "#스포츠뉴스"
-    ],
-    "epl": [
-      "#프리미어리그",
-      "#EPL"
-    ],
-    "laliga": [
-      "#라리가",
-      "#LaLiga"
-    ],
-    "seriea": [
-      "#세리에A",
-      "#SerieA"
-    ],
-    "bundes": [
-      "#분데스리가",
-      "#Bundesliga"
-    ],
-    "ligue1": [
-      "#리그앙",
-      "#Ligue1"
-    ],
-    "ucl": [
-      "#챔피언스리그",
-      "#UCL"
-    ],
-    "eredivisie": [
-      "#에레디비시",
-      "#Eredivisie"
-    ],
-    "primeira": [
-      "#프리메이라리가",
-      "#LigaPortugal"
-    ],
-    "brasil": [
-      "#브라질리그",
-      "#Brasileirao"
-    ],
-    "champ": [
-      "#챔피언십",
-      "#EFLChampionship"
-    ]
+    "pagesBase": "https://talkpapa.github.io/sports-insta",
+    "keepDays": 14
   },
   "_설명": {
-    "provider": "footballdata = 무료 키 필요, 전체 데이터 (하루 6개를 뽑으려면 사실상 필수) / thesportsdb = 키 없이 되지만 데이터가 잘려 온다",
-    "hosting.pagesBase": "예: https://내아이디.github.io/sports-insta — 비어 있으면 build 가 멈춘다",
-    "publish.perDay": "하루 게시 수. 이 수만큼 큐 슬롯을 만들고, post 워크플로가 슬롯 시각마다 하나씩 올린다",
-    "publish.minGapHours": "직전 게시와 이만큼 떨어져야 올린다. 슬롯 간격(3시간)보다 작아야 한다",
-    "leagues": "많을수록 하루치 소재가 넉넉하다. 리그 하나에서 결과·일정·순위 세 가지가 나온다"
+    "publish.perDay": "하루 몇 편. 올리실 때는 post.yml 의 cron 주석도 푸십시오",
+    "publish.minGapHours": "직전 게시와 최소 간격",
+    "video.secondsPerCard": "카드 한 장이 머무는 초. 3장이면 총 길이는 (이 값×3 - fade×2)",
+    "video.motion": "천천히 확대되는 움직임. false 면 정지 화면",
+    "hosting.keepDays": "영상을 저장소에 며칠 남길지. 오래된 것은 지워 저장소를 가볍게 유지한다",
+    "news.keywords": "관심 낱말로 뉴스를 거른다. 비우면 전체 스포츠",
+    "write.model": "모델 이름이 바뀌면 node scripts/write.js --models 로 확인해 고치십시오"
+  },
+  "news": {
+    "keywords": []
+  },
+  "write": {
+    "model": "gemini-3.7-flash"
+  },
+  "video": {
+    "secondsPerCard": 4,
+    "fade": 0.5,
+    "motion": true
   }
 }

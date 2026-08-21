@@ -1,23 +1,21 @@
-# 게시 — 하루 6번, 아침에 만들어 둔 슬롯을 하나씩 올린다.
+# 게시 — 하루 3번, 아침에 만들어 둔 릴스를 하나씩 올린다.
 #
 # ── 한 번에 하나만 올리는 이유 ────────────────────────────────
-# 여섯 개를 한꺼번에 쏟으면 서로의 도달을 깎아먹고, 무엇보다 스팸으로 보인다.
-# 새 계정이 그러면 노출이 눌린다. 그래서 시각을 나눠 하나씩 내보낸다.
+# 세 편을 한꺼번에 쏟으면 서로의 도달을 깎아먹고, 새 계정이 그러면 스팸으로
+# 읽혀 노출이 눌린다. 시각을 나눠 하나씩 내보낸다.
 #
 # ── 시각 (한국시간 → UTC 는 9시간 뺀 값) ──────────────────────
-# 지금은 하루 3개다. 한국에서 스포츠 계정이 가장 잘 읽히는 세 때에 맞췄다.
 #   12:30 점심   18:30 퇴근길   21:30 밤
-# 첫 게시가 12시 반인 것은 카드 만들기(아침 9시) 뒤 Pages 반영을 기다리기 위함이다.
+# 첫 게시가 12시 반인 것은 릴스 만들기(아침 9시) 뒤 Pages 반영을 기다리기 위함이다.
 #
-# ── 하루 6개로 올리실 때 ─────────────────────────────────────
+# ── 하루 6편으로 올리실 때 ───────────────────────────────────
 # ① config.json 의 publish.perDay 를 6 으로
 # ② 아래 주석 처리된 cron 세 줄의 '# ' 를 지우면 끝이다.
 # 반대로 줄이실 때는 perDay 만 낮추면 된다 — 남는 시각은 알아서 넘어간다.
 #
 # ── 밀리면 어떻게 되나 ───────────────────────────────────────
-# 슬롯은 파일 하나씩이고, 나간 것만 _done 으로 옮겨진다. 그래서 한 번 실패해도
-# 다음 시각에 그 슬롯이 이어서 나간다. 그날 몫을 다 채우면 그 뒤 실행은
-# 스스로 멈춘다(오늘 게시 수가 perDay 에 닿았는지 보고 판단한다).
+# 슬롯은 파일 하나씩이고, 나간 것만 _done 으로 옮겨진다. 한 번 실패해도
+# 다음 시각에 그 슬롯이 이어서 나간다. 그날 몫을 다 채우면 스스로 멈춘다.
 name: 게시
 
 on:
@@ -25,7 +23,7 @@ on:
     - cron: '30 3 * * *'      # 한국시간 12:30
     - cron: '30 9 * * *'      # 한국시간 18:30
     - cron: '30 12 * * *'     # 한국시간 21:30
-    # 하루 6개로 올리실 때 아래 세 줄의 '# ' 를 지우십시오
+    # 하루 6편으로 올리실 때 아래 세 줄의 '# ' 를 지우십시오
     # - cron: '0 2 * * *'     # 한국시간 11:00
     # - cron: '0 7 * * *'     # 한국시간 16:00
     # - cron: '0 14 * * *'    # 한국시간 23:00
@@ -41,6 +39,7 @@ concurrency:
 jobs:
   post:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -62,9 +61,9 @@ jobs:
           set -e
           echo "code=$code" >> "$GITHUB_OUTPUT"
           if [ "$code" = "3" ]; then echo "지금 올릴 것이 없습니다 — 정상 종료"; exit 0; fi
-          if [ "$code" != "0" ]; then echo "::warning::검사에서 걸려 이번 슬롯을 건너뜁니다"; exit 0; fi
+          if [ "$code" != "0" ]; then echo "::warning::검사에서 걸려 이번 편을 건너뜁니다"; exit 0; fi
 
-      - name: 게시
+      - name: 릴스 게시
         if: steps.verify.outputs.code == '0'
         env:
           IG_TOKEN: ${{ secrets.IG_TOKEN }}
@@ -80,11 +79,11 @@ jobs:
         run: |
           git config user.name  "sports-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --rebase --autostash || true
           git add state.json queue
           if git diff --cached --quiet; then
             echo "변경 없음 — 커밋 생략"
           else
-            git commit -m "게시: $(TZ=Asia/Seoul date +%F) 슬롯"
+            git commit -m "게시: $(TZ=Asia/Seoul date +%F)"
+            git pull --rebase --autostash || true
             git push
           fi

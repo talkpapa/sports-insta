@@ -1,6 +1,6 @@
 node_modules/
 .env
 assets/fonts/
-data/
-_*.png
 _demo/
+_photo.jpg
+_ai-*.png
