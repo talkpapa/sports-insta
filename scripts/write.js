@@ -31,12 +31,16 @@ const SCHEMA = {
     tag: { type: 'string', description: '카드 오른쪽 위 라벨. 영어 대문자 1~3단어. 예: TRANSFER ALERT, MLB, INJURY NEWS' },
     slides: {
       type: 'array',
-      description: '정확히 3장. 1장=사건 제시, 2장=핵심 내용, 3장=의미나 다음 전개',
+      description:
+        '정확히 3장이며 세 장의 역할이 서로 다르다. ' +
+        '1장 = 눈길을 잡는 큰 제목. ' +
+        '2장 = 상황을 깔아주고 던지는 질문. ' +
+        '3장 = 그 질문에 대한 구체적인 답.',
       items: {
         type: 'object',
         properties: {
-          headline: { type: 'string', description: '영어 2~6단어. 카드에 아주 크게 들어가므로 짧아야 한다. 마침표 없이' },
-          subhead:  { type: 'string', description: '영어 한 줄, 12단어 이내' },
+          headline: { type: 'string', description: '카드에 아주 크게 들어가는 영어 문구. 1장 2~5단어, 2장은 물음표로 끝나는 4~8단어, 3장 2~5단어. 마침표 없이' },
+          subhead:  { type: 'string', description: '헤드라인 아래 받쳐주는 영어. 1장 12단어 이내 한 줄, 2장 20단어 이내(질문의 배경), 3장 35~55단어(질문에 대한 자세한 답, 2~3문장)' },
         },
         required: ['headline', 'subhead'],
       },
@@ -51,7 +55,29 @@ const SCHEMA = {
 
 const SYSTEM = `You write Instagram carousel scripts for a sports news account.
 
-Turn a news headline and short summary into a three-card story.
+Turn a news headline and short summary into a three-card story that a reader
+finishes in about 15 seconds.
+
+The three cards have different jobs. Do not write three variations of the same thing.
+
+  Card 1 — THE HOOK.
+    headline: the single most striking fact, 2-5 words, huge display type.
+    subhead:  one short line that frames it. Under 12 words.
+
+  Card 2 — THE QUESTION.
+    headline: an actual question ending in "?", 4-8 words. It must be the question
+              a reader would ask after card 1.
+    subhead:  the setup the question needs — what happened, who is involved, why it
+              matters right now. Under 20 words. This is where the story lives.
+
+  Card 3 — THE ANSWER.
+    headline: the answer in 2-5 words. Blunt and concrete.
+    subhead:  the detailed answer, 35-55 words across 2-3 full sentences. Give the
+              specifics: numbers, names, dates, what happens next. This is the payoff —
+              a reader who only saw card 3 should still learn something.
+
+Card 2's question must be genuinely answered by card 3. Never ask something the source
+does not answer, and never end on "time will tell" or "we'll find out soon".
 
 Hard rules:
 - Write everything from scratch. Never copy or lightly reword the source's sentences.
@@ -67,7 +93,7 @@ Hard rules:
   "baseball glove close up", "empty locker room".
 
 Style:
-- Card headlines are display type: 2-6 words, no period, strong nouns and verbs.
+- Card headlines are display type: short, no period, strong nouns and verbs.
 - The caption's first line decides whether anyone reads on. Make it the specific
   surprising thing, not a category label.
 - Plain, confident English. No hype words like SHOCKING or "you won't believe".`;
@@ -201,6 +227,14 @@ async function askModel(model, item) {
       throw new Error(`슬라이드가 3장이 아닙니다 (${plan.slides?.length ?? 0}장)`);
     }
     if (plan.slides.some(s => !s.headline?.trim())) throw new Error('빈 헤드라인이 있습니다.');
+
+    /* 세 장의 역할이 지켜졌는지 본다. 모델이 가끔 세 장을 비슷하게 써 놓는다.
+     * 물음표가 없으면 질문 카드가 아니고, 3장이 짧으면 답이 아니라 또 다른 제목이다. */
+    const q = plan.slides[1];
+    if (!/\?/.test(q.headline)) q.headline = q.headline.replace(/[.!]*$/, '') + '?';
+    const a = plan.slides[2];
+    const answerWords = String(a.subhead || '').trim().split(/\s+/).filter(Boolean).length;
+    if (answerWords < 20) throw new Error(`3장 답이 너무 짧습니다 (${answerWords}단어) — 이 소재는 넘깁니다`);
     if (!plan.caption?.trim()) throw new Error('캡션이 비었습니다.');
     if (!plan.photo_query?.trim()) throw new Error('사진 검색어가 비었습니다.');
   }

@@ -21,7 +21,7 @@ const path = require('path');
 const { ROOT, config, tzDate, prettyDateEn, loadState, saveState, log } = require('./lib/util.js');
 const { collectNews } = require('./news.js');
 const { writeScript } = require('./write.js');
-const { findPhoto } = require('./photo.js');
+const { findPhotos, mergeCredits } = require('./photo.js');
 const { renderCards } = require('./render.js');
 const { makeVideo, hasFfmpeg, pickAudio } = require('./video.js');
 
@@ -100,10 +100,13 @@ async function main() {
     log.ok(`원고 · ${plan.slides.map(s => s.headline).join(' / ')}`);
 
     /* ── ③ 사진 ── */
-    const photo = await findPhoto(plan.photo_query);
-    if (!photo) { log.warn(`사진을 못 찾음 ("${plan.photo_query}") — 이 소재는 넘깁니다`); continue; }
+    /* 카드 수만큼 받는다. 배경이 장마다 바뀌어야 넘길 이유가 생긴다.
+     * 모자라면 있는 것을 돌려 쓴다 — 한 장이라도 있으면 카드는 나온다. */
+    const photos = await findPhotos(plan.photo_query, plan.slides.length);
+    if (!photos.length) { log.warn(`사진을 못 찾음 ("${plan.photo_query}") — 이 소재는 넘깁니다`); continue; }
+    const credit = mergeCredits(photos);
 
-    if (DRY) { made.push({ item, plan, credit: photo.credit }); continue; }
+    if (DRY) { made.push({ item, plan, credit }); continue; }
 
     slot++;
     const id = pad2(slot);
@@ -111,7 +114,7 @@ async function main() {
     fs.mkdirSync(outDir, { recursive: true });
 
     /* ── ④ 카드 ── */
-    const cards = await renderCards(plan, photo.buffer, {
+    const cards = await renderCards(plan, photos.map(p => p.buffer), {
       handle: cfg.account?.handle || '',
       date: prettyDateEn(today),
     });
@@ -137,9 +140,9 @@ async function main() {
     const videoUrl = `${base}/reels/${today}/${id}/reel.mp4`;
     const coverUrl = `${base}/reels/${today}/${id}/cover.png`;
     fs.writeFileSync(path.join(queueDir, id + '.md'),
-      queueMarkdown({ id, today, plan, item, photo, video, videoUrl, coverUrl }), 'utf8');
+      queueMarkdown({ id, today, plan, item, credit, video, videoUrl, coverUrl }), 'utf8');
 
-    made.push({ item, plan, credit: photo.credit, seconds: video.seconds });
+    made.push({ item, plan, credit, photos: photos.length, seconds: video.seconds });
   }
 
   if (DRY) {
@@ -163,16 +166,16 @@ async function main() {
   writeIndex(cfg);
 
   log.step(`완성 — ${made.length}편`);
-  made.forEach((m, i) => console.log(`  ${pad2(i + 1)}. ${m.plan.slides[0].headline} · ${m.seconds.toFixed(0)}초 · ${m.credit}`));
+  made.forEach((m, i) => console.log(`  ${pad2(i + 1)}. ${m.plan.slides[0].headline} · ${m.seconds.toFixed(0)}초 · 사진 ${m.photos}종 · ${m.credit}`));
   log.info('커밋하면 Pages 에 올라가고, 게시 시각에 나갑니다.');
 }
 
 /** 큐 파일 — 사람이 열어봐도 무엇이 나갈지 한눈에 보이게 */
-function queueMarkdown({ id, today, plan, item, photo, video, videoUrl, coverUrl }) {
+function queueMarkdown({ id, today, plan, item, credit, video, videoUrl, coverUrl }) {
   const caption = [
     plan.caption.trim(),
     '',
-    photo.credit,
+    credit,
     '',
     '#' + plan.hashtags.join(' #'),
   ].join('\n');

@@ -56,8 +56,17 @@ function searchLadder(query) {
 
 const openverse = {
   name: 'Openverse',
-  async search(query) {
+  async search(query, key, want = 1) {
+    /* 한 단계에서 멈추지 않고, "사진만" 조건이 붙은 단계들을 모아 후보를 쌓는다.
+     * 카드마다 다른 사진을 깔려면 후보가 여러 장 필요하기 때문이다.
+     * 다만 조건이 헐거워지는 단계로는 내려가지 않는다 — category=photograph 를
+     * 놓는 순간 미술관 소장 회화가 섞여 들어온다. */
+    const need = Math.max(8, want * 6);
+    const out = [];
+    const seenUrl = new Set();
+
     for (const step of searchLadder(query)) {
+      if (out.length && !step.category) break;
       const u = new URL('https://api.openverse.org/v1/images/');
       u.searchParams.set('q', step.q);
       u.searchParams.set('license', [...OK_LICENSE].join(','));
@@ -78,9 +87,16 @@ const openverse = {
       const how = [step.category ? '사진만' : null, step.size ? '고해상도' : null]
         .filter(Boolean).join('·') || '조건 없음';
       log.info(`"${step.q}" (${how}) — ${results.length}건`);
-      return this.shape(results);
+
+      /* 단계가 겹치면 같은 사진이 또 나온다. 주소로 걸러 담는다. */
+      for (const r of this.shape(results)) {
+        if (!r.url || seenUrl.has(r.url)) continue;
+        seenUrl.add(r.url);
+        out.push(r);
+      }
+      if (out.length >= need) break;
     }
-    return [];
+    return out;
   },
 
   shape(results) {
@@ -111,7 +127,7 @@ const openverse = {
 /* ══ Pexels (무료 키 필요, 사진 품질이 낫다) ═══════════ */
 const pexels = {
   name: 'Pexels',
-  async search(query, key) {
+  async search(query, key, want = 1) {
     const u = new URL('https://api.pexels.com/v1/search');
     u.searchParams.set('query', query);
     u.searchParams.set('per_page', '20');
@@ -164,8 +180,17 @@ const BAD_TITLE = [
 
 function titleLooksBad(title) {
   const t = String(title || '').toLowerCase();
-  return BAD_TITLE.some(w => t.includes(w));
+  if (BAD_TITLE.some(w => t.includes(w))) return true;
+
+  /* 제목에 옛 연도가 박혀 있으면 기록사진이다. 실제로 "Oak Ridge Football 1947" 이
+   * 오늘 NFL 소식의 배경으로 뽑혔다. 제공처 목록으로는 안 걸린다 — 정부기관·대학이
+   * 자기 자료실을 자유 라이선스로 풀어두기 때문이다. 연도를 직접 본다. */
+  const year = t.match(/(?:^|[^0-9])((?:18|19|20)[0-9]{2})(?:[^0-9]|$)/);
+  if (year && Number(year[1]) < 1995) return true;
+
+  return false;
 }
+
 
 /* 검색어의 낱말이 제목에 있는가.
  *
@@ -210,46 +235,95 @@ function rank(list, query = '') {
   return relevant.sort((a, b) => b.score - a.score);
 }
 
+/** 후보 하나를 실제로 받아 본다. 목록에 있어도 안 열리는 주소가 흔해서
+ * 직접 주소와 Openverse 프록시를 차례로 시도한다. 못 받으면 null. */
+async function download(c) {
+  for (const link of [c.url, c.proxy].filter(Boolean)) {
+    try {
+      const r = await fetch(link, { headers: { 'user-agent': UA } });
+      if (!r.ok) continue;
+      const type = r.headers.get('content-type') || '';
+      if (!type.startsWith('image/')) continue;
+      const buffer = Buffer.from(await r.arrayBuffer());
+      if (buffer.length < 30000) continue;            // 너무 작으면 썸네일이다
+      if (buffer.length > 20 * 1024 * 1024) continue; // 20MB 넘으면 받다가 시간을 다 쓴다
+      return buffer;
+    } catch { /* 다음 경로 */ }
+  }
+  return null;
+}
+
 /**
- * 검색어에 맞는 사진 하나를 받아 온다.
- * @returns {Promise<{buffer:Buffer, credit:string, meta:object}|null>}
+ * 검색어에 맞는 사진을 여러 장 받아 온다.
+ *
+ * 카드 석 장에 같은 사진을 깔면 넘길 이유가 없어진다. 배경이 바뀌어야 손가락이
+ * 움직인다. 그래서 같은 검색어의 상위 후보에서 서로 다른 사진을 골라 온다 —
+ * 소재는 같고 그림만 달라지므로 한 편의 결이 흐트러지지 않는다.
+ *
+ * 원하는 만큼 못 채울 수 있다. 그때는 있는 만큼만 돌려준다 (부르는 쪽이 돌려 쓴다).
+ * @returns {Promise<Array<{buffer:Buffer, credit:string, meta:object}>>}
  */
-async function findPhoto(query) {
+async function findPhotos(query, want = 1) {
   const E = env();
   const providers = E.PEXELS_KEY
     ? [{ p: pexels, key: E.PEXELS_KEY }, { p: openverse }]
     : [{ p: openverse }];
 
+  const got = [];
+  /* 주소가 달라도 작가와 제목이 같으면 같은 사진이다. 제공처가 같은 것을
+   * 크기별로 여러 번 올려두기 때문에 이것을 안 보면 똑같은 그림이 겹친다. */
+  const seen = new Set();
+
   for (const { p, key } of providers) {
     let candidates;
     try {
-      candidates = rank(await p.search(query, key), query);
+      candidates = rank(await p.search(query, key, want), query);
     } catch (e) {
       log.warn(`${p.name} 검색 실패 — ${e.message}`);
       continue;
     }
     if (!candidates.length) { log.info(`${p.name} — 쓸 만한 사진 없음`); continue; }
 
-    /* 위에서부터 받아 본다. 목록에는 있어도 실제로 안 열리는 주소가 흔하다.
-     * 후보 하나마다 직접 주소와 프록시를 차례로 시도한다. */
-    for (const c of candidates.slice(0, 6)) {
-      for (const link of [c.url, c.proxy].filter(Boolean)) {
-        try {
-          const r = await fetch(link, { headers: { 'user-agent': UA } });
-          if (!r.ok) continue;
-          const type = r.headers.get('content-type') || '';
-          if (!type.startsWith('image/')) continue;
-          const buffer = Buffer.from(await r.arrayBuffer());
-          if (buffer.length < 30000) continue;           // 너무 작으면 썸네일이다
-          if (buffer.length > 20 * 1024 * 1024) continue; // 20MB 넘으면 받다가 시간을 다 쓴다
-          log.ok(`${p.name} · ${c.width}×${c.height} · ${c.license} · ${c.author || '작자미상'}`);
-          return { buffer, credit: p.credit(c), meta: c };
-        } catch { /* 다음 경로 */ }
-      }
+    /* 필요한 장수의 네 배까지만 두드려 본다. 안 열리는 주소를 끝없이 붙들고
+     * 있으면 빌드가 통째로 늦어진다. */
+    for (const c of candidates.slice(0, Math.max(6, want * 4))) {
+      if (got.length >= want) break;
+      const key2 = `${c.author}|${c.title}`.toLowerCase().trim();
+      if (seen.has(key2)) continue;
+      const buffer = await download(c);
+      if (!buffer) continue;
+      seen.add(key2);
+      log.ok(`${p.name} · ${c.width}×${c.height} · ${c.license} · ${c.author || '작자미상'}`);
+      got.push({ buffer, credit: p.credit(c), meta: c });
     }
-    log.info(`${p.name} — 후보는 있었지만 받아지지 않음`);
+    if (got.length >= want) break;
+    if (!got.length) log.info(`${p.name} — 후보는 있었지만 받아지지 않음`);
   }
-  return null;
+
+  if (got.length && got.length < want) {
+    log.info(`사진 ${got.length}장만 구했습니다 (원한 ${want}장) — 돌려 씁니다.`);
+  }
+  return got;
+}
+
+/** 한 장만 필요할 때 */
+async function findPhoto(query) {
+  const got = await findPhotos(query, 1);
+  return got[0] || null;
+}
+
+/** 여러 장을 썼으면 출처도 여러 줄이다. CC BY 는 표기가 의무라 하나도 빠뜨릴 수 없다.
+ * 같은 사람이 두 장을 찍었으면 한 번만 적는다. */
+function mergeCredits(photos) {
+  const seen = new Set();
+  const out = [];
+  for (const p of photos) {
+    const one = String(p.credit || '').replace(/^📷\s*/, '').trim();
+    if (!one || seen.has(one)) continue;
+    seen.add(one);
+    out.push(one);
+  }
+  return out.length ? '📷 ' + out.join(' · ') : '';
 }
 
 /* ── 직접 실행 ─────────────────────────────────────── */
@@ -268,4 +342,4 @@ if (require.main === module) {
   })().catch(e => { log.fail(e.message); process.exit(1); });
 }
 
-module.exports = { findPhoto, MIN_W, MIN_H };
+module.exports = { findPhoto, findPhotos, mergeCredits, MIN_W, MIN_H };
