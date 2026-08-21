@@ -84,7 +84,15 @@ async function main() {
   }
 
   const made = [];
-  let slot = 0;
+
+  /* 슬롯 번호는 1 부터가 아니라, 오늘 이미 나간 것 다음부터 매긴다.
+   *
+   * 하루 중간에 --force 로 다시 만들면 예전에는 또 01 이 붙었다. 그런데 게시하는
+   * 쪽은 "같은 날 같은 슬롯"을 두 번 올리지 않도록 막고 있어서, 새로 만든 것이
+   * 조용히 게시되지 않는 상태가 된다. */
+  let slot = (st.posted_log || [])
+    .filter(p => p.date === today)
+    .reduce((max, p) => Math.max(max, Number(p.slot) || 0), 0);
 
   for (const item of news) {
     if (made.length >= perDay) break;
