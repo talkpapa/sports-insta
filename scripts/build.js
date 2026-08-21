@@ -134,6 +134,7 @@ async function main() {
       fade: cfg.video?.fade,
       motion: cfg.video?.motion,
       audio: pickAudio(Number(today.replace(/-/g, '')) + slot),
+      seed: Number(today.replace(/-/g, '')) + slot,
     });
     log.ok(`영상 ${video.seconds.toFixed(1)}초 · ${(video.bytes / 1024 / 1024).toFixed(1)}MB · 소리 ${video.hasAudio ? '있음' : '무음'}`);
 

@@ -35,6 +35,16 @@ function run(args, timeoutMs = 240000) {
   });
 }
 
+/** ffprobe 로 길이를 잰다. 못 재면 0. */
+function probeSeconds(file) {
+  return new Promise(resolve => {
+    execFile('ffprobe',
+      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file],
+      { timeout: 20000 },
+      (err, stdout) => resolve(err ? 0 : Number(String(stdout).trim()) || 0));
+  });
+}
+
 /** ffmpeg 이 있는지 */
 async function hasFfmpeg() {
   try { await run(['-version'], 10000); return true; } catch { return false; }
@@ -79,8 +89,24 @@ async function makeVideo(cardPaths, outPath, opts = {}) {
   cardPaths.forEach((p, i) => args.push('-loop', '1', '-t', String(durs[i]), '-i', p));
 
   const audio = opts.audio || null;
-  if (audio) args.push('-stream_loop', '-1', '-i', audio);      // 짧은 곡이면 이어 붙여 채운다
-  else args.push('-f', 'lavfi', '-t', String(total), '-i', 'anullsrc=r=44100:cl=stereo');
+  if (audio) {
+    /* 곡 앞머리에서 시작하지 않는다.
+     *
+     * 노래의 첫 부분은 대개 조용한 도입부다. 실제로 받아둔 곡들을 재보니 처음 17초가
+     * 45초 지점보다 최대 11dB 낮았다. 그 자리를 쓰면 뒤의 loudnorm 이 도입부를
+     * 억지로 끌어올려, 17초 내내 밍밍한 소리가 난다.
+     * 그래서 본론으로 들어간 자리에서 시작한다. 시작점은 날마다 조금씩 옮겨
+     * 같은 곡이 두 번 걸려도 같은 구간이 나오지 않게 한다. */
+    const dur = await probeSeconds(audio);
+    const want = 30 + (Math.abs(opts.seed || 0) % 4) * 15;   // 30 · 45 · 60 · 75초
+    let seek = 0;
+    if (dur > want + total) seek = want;
+    else if (dur > total + 10) seek = Math.floor((dur - total) / 2);
+    if (seek) args.push('-ss', String(seek));
+    args.push('-stream_loop', '-1', '-i', audio);            // 짧은 곡이면 이어 붙여 채운다
+  } else {
+    args.push('-f', 'lavfi', '-t', String(total), '-i', 'anullsrc=r=44100:cl=stereo');
+  }
 
   /* ── 화면 만들기 ──
    * 카드는 이미 1080×1920 이라 크기는 맞다. 다만 가만히 있는 그림이 12초 이어지면
@@ -178,6 +204,7 @@ if (require.main === module) {
       fade: cfg.video?.fade,
       motion: cfg.video?.motion,
       audio: pickAudio(),
+      seed: 0,
     });
     log.ok(`_demo/reel.mp4 · ${r.seconds.toFixed(1)}초 · ${(r.bytes / 1024 / 1024).toFixed(1)}MB · 소리 ${r.hasAudio ? '있음' : '무음'}`);
   })().catch(e => { log.fail(e.message); process.exit(1); });
