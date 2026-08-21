@@ -100,8 +100,29 @@ async function listModels() {
  */
 async function writeScript(item) {
   const cfg = config();
-  const model = cfg.write?.model || DEFAULT_MODEL;
 
+  /* 무료 등급 한도는 모델마다 따로 걸린다 (하루 20건씩).
+   * 그래서 하나가 막히면 다음 모델로 넘어간다 — 모델 넷을 쓰면
+   * 사실상 하루 80건이 된다. 품질이 좋은 순서로 늘어놓는다. */
+  const models = [
+    cfg.write?.model || DEFAULT_MODEL,
+    ...(cfg.write?.fallbacks || []),
+  ].filter((m, i, a) => m && a.indexOf(m) === i);
+
+  let lastErr;
+  for (const model of models) {
+    try { return await askModel(model, item); }
+    catch (e) {
+      lastErr = e;
+      /* 하루 한도에 걸린 것이면 다음 모델로. 그 밖의 오류는 모델을 바꿔도 같으므로 멈춘다. */
+      if (!/일일 한도|429/.test(e.message)) throw e;
+      log.warn(`${model} 한도 소진 — 다음 모델로`);
+    }
+  }
+  throw lastErr;
+}
+
+async function askModel(model, item) {
   const input = [
     `Source: ${item.source}`,
     `Headline: ${item.title}`,
@@ -135,6 +156,11 @@ async function writeScript(item) {
     if (r.ok) break;
 
     lastDetail = await r.text();
+    /* 429 는 두 종류다. 분당 한도는 잠깐 기다리면 풀리지만,
+     * 하루 한도는 기다려도 안 풀린다. 후자면 재시도가 시간 낭비이므로
+     * 바로 표시를 남기고 빠져나가 다음 모델로 넘어가게 한다. */
+    const perDay = /PerDay|per day/i.test(lastDetail);
+    if (perDay) { lastDetail = '일일 한도 소진 ' + lastDetail; break; }
     const retryable = r.status === 429 || r.status >= 500;
     if (!retryable) break;
     log.info(`Gemini ${r.status} — 다시 시도 (${attempt + 1}/3)`);
@@ -144,6 +170,8 @@ async function writeScript(item) {
     /* 모델 이름이 바뀌는 일이 잦다. 그때 무슨 일인지 바로 알 수 있게 안내를 붙인다. */
     const hint = r.status === 404
       ? `\n   모델 "${model}" 을 못 찾았습니다. "node scripts/write.js --models" 로 목록을 보고\n   config.json 의 write.model 을 고치십시오.`
+      : /일일 한도/.test(lastDetail)
+        ? '\n   이 모델의 하루 무료 한도를 다 썼습니다.'
       : r.status === 429
         ? '\n   무료 등급 한도에 걸렸습니다. 잠시 뒤 다시 시도하십시오.'
         : r.status >= 500

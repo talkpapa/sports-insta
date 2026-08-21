@@ -143,10 +143,50 @@ const ARCHIVE = new Set([
   'digitaltmuseum', 'wikimedia_commons', 'floraon', 'biodiversity',
 ]);
 
+/* 제목으로 걸러내야 하는 것들.
+ *
+ * category=photograph 는 "그림을 찍은 사진"을 걸러주지 못한다. rawpixel 같은 곳이
+ * 미술관 소장 회화를 대량으로 올려두기 때문이다. 실제로 "cricket bat" 을 찾았을 때
+ * "naked man stands, holding cricket" 이라는 누드 회화가 가장 큰 파일이라 뽑혔다.
+ * 그대로 나갔으면 스포츠 계정에 누드가 올라가고 인스타 정책에 걸렸을 것이다.
+ *
+ * 그래서 제목을 본다. 예술 작품을 가리키는 말과, 어떤 경우에도 올리면 안 되는 말. */
+const BAD_TITLE = [
+  /* 올려서는 안 되는 것 — 계정이 제재된다 */
+  'naked', 'nude', 'nudity', 'topless', 'erotic', 'lingerie',
+  /* 사진이 아니라 그림·판화·소묘 */
+  'painting', 'oil on canvas', 'watercolou', 'watercolor', 'engraving', 'etching',
+  'lithograph', 'woodcut', 'illustration', 'drawing', 'sketch', 'portrait of',
+  'still life', 'academy', 'museum', 'gallery', 'antique', 'vintage print',
+  /* 사람이 아니라 문서·지도 */
+  'map of', 'poster for', 'diagram', 'manuscript', 'newspaper',
+];
+
+function titleLooksBad(title) {
+  const t = String(title || '').toLowerCase();
+  return BAD_TITLE.some(w => t.includes(w));
+}
+
+/* 검색어의 낱말이 제목에 있는가.
+ *
+ * 이것이 가장 강한 안전장치다. 낱말 목록으로 미술품을 걸러내려 했지만 실패했다 —
+ * "Seated female model Vilhelm Lundstrøm" 은 누드 회화인데 금지어가 하나도 없다.
+ * 그림 제목은 자기가 그림이라고 말해주지 않는다.
+ *
+ * 대신 이렇게 본다: "cricket bat" 을 찾았으면 제목에 cricket 이나 bat 이 있어야 한다.
+ * 없는 것은 검색 엔진이 엉뚱하게 물어온 것이다. 미술품이든 숲이든 한꺼번에 걸러진다. */
+function titleMatches(title, query) {
+  const t = String(title || '').toLowerCase();
+  const words = String(query).toLowerCase().split(/\s+/).filter(w => w.length > 2);
+  if (!words.length) return true;
+  return words.some(w => t.includes(w));
+}
+
 /** 세로 화면에 잘 맞는 순서로 줄 세운다 */
-function rank(list) {
-  return list
+function rank(list, query = '') {
+  const scored = list
     .filter(p => p.url && p.width >= MIN_W && p.height >= MIN_H)
+    .filter(p => !titleLooksBad(p.title))
     /* 제공처만 봐서는 못 거른다 — rawpixel 같은 곳이 도서관 소장품을 다시 올리기
      * 때문이다. 그때 provider 는 rawpixel 이고 creator 가 libraryofcongress 다.
      * 그래서 둘 다 본다. */
@@ -160,9 +200,14 @@ function rank(list) {
        * 너무 넓으면 가운데만 남아 장면이 사라진다. */
       const fit = ratio <= 1 ? 2 : ratio < 1.5 ? 1.4 : ratio < 2 ? 1 : 0.4;
       const size = Math.min(p.width, p.height) / 1000;
-      return { ...p, score: fit * 2 + Math.min(size, 3) };
-    })
-    .sort((a, b) => b.score - a.score);
+      return { ...p, relevant: titleMatches(p.title, query), score: fit * 2 + Math.min(size, 3) };
+    });
+
+  /* 제목이 검색어와 맞는 것만 쓴다. 하나도 없으면 빈손으로 돌려보낸다 —
+   * 엉뚱한 사진을 올리느니 그 소재를 통째로 거르는 편이 낫다.
+   * 실제로 이 규칙이 없을 때 누드 회화가 스포츠 카드로 나갈 뻔했다. */
+  const relevant = scored.filter(p => p.relevant);
+  return relevant.sort((a, b) => b.score - a.score);
 }
 
 /**
@@ -178,7 +223,7 @@ async function findPhoto(query) {
   for (const { p, key } of providers) {
     let candidates;
     try {
-      candidates = rank(await p.search(query, key));
+      candidates = rank(await p.search(query, key), query);
     } catch (e) {
       log.warn(`${p.name} 검색 실패 — ${e.message}`);
       continue;
