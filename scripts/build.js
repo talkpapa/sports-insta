@@ -130,6 +130,7 @@ async function main() {
     /* ── ⑤ 영상 ── */
     const video = await makeVideo(cardPaths, path.join(outDir, 'reel.mp4'), {
       secondsPerCard: cfg.video?.secondsPerCard,
+      secondsLastCard: cfg.video?.secondsLastCard,
       fade: cfg.video?.fade,
       motion: cfg.video?.motion,
       audio: pickAudio(Number(today.replace(/-/g, '')) + slot),

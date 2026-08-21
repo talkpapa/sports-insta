@@ -15,7 +15,8 @@
   "_설명": {
     "publish.perDay": "하루 몇 편. 올리실 때는 post.yml 의 cron 주석도 푸십시오",
     "publish.minGapHours": "직전 게시와 최소 간격",
-    "video.secondsPerCard": "카드 한 장이 머무는 초. 3장이면 총 길이는 (이 값×3 - fade×2)",
+    "video.secondsPerCard": "카드 한 장이 머무는 초",
+    "video.secondsLastCard": "마지막 카드만 따로. 답이 두세 문장이라 다 읽을 시간이 필요하다",
     "video.motion": "천천히 확대되는 움직임. false 면 정지 화면",
     "hosting.keepDays": "영상을 저장소에 며칠 남길지. 오래된 것은 지워 저장소를 가볍게 유지한다",
     "news.keywords": "관심 낱말로 뉴스를 거른다. 비우면 전체 스포츠",
@@ -35,6 +36,7 @@
   },
   "video": {
     "secondsPerCard": 5,
+    "secondsLastCard": 8,
     "fade": 0.5,
     "motion": true
   }

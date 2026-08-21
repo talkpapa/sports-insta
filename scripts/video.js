@@ -54,7 +54,7 @@ function pickAudio(seed = 0) {
  * 카드 이미지들을 영상 하나로 잇는다.
  * @param {string[]} cardPaths  카드 PNG 경로 (순서대로)
  * @param {string} outPath      만들 MP4 경로
- * @param {object} opts         { secondsPerCard, fade, audio, motion }
+ * @param {object} opts         { secondsPerCard, secondsLastCard, fade, audio, motion }
  */
 async function makeVideo(cardPaths, outPath, opts = {}) {
   if (!cardPaths.length) throw new Error('카드가 없습니다.');
@@ -64,13 +64,19 @@ async function makeVideo(cardPaths, outPath, opts = {}) {
   const motion = opts.motion !== false;
   const n = cardPaths.length;
 
+  /* 마지막 카드는 더 오래 둘 수 있다.
+   * 앞 두 장은 제목과 질문이라 한눈에 읽히지만, 마지막 장에는 두세 문장짜리 답이
+   * 들어간다. 같은 시간을 주면 다 못 읽고 넘어간다. */
+  const last = Math.max(per, Number(opts.secondsLastCard) || per);
+  const durs = cardPaths.map((_, i) => (i === n - 1 ? last : per));
+
   /* 총 길이 — 카드가 이어질 때 겹치는 만큼(fade) 짧아진다.
    * 인스타 릴스는 3초 이상이어야 한다. */
-  const total = per * n - fade * (n - 1);
+  const total = durs.reduce((a, b) => a + b, 0) - fade * (n - 1);
   if (total < 3) throw new Error(`영상이 너무 짧습니다 (${total.toFixed(1)}초). 카드당 시간을 늘리십시오.`);
 
   const args = ['-y'];
-  for (const p of cardPaths) args.push('-loop', '1', '-t', String(per), '-i', p);
+  cardPaths.forEach((p, i) => args.push('-loop', '1', '-t', String(durs[i]), '-i', p));
 
   const audio = opts.audio || null;
   if (audio) args.push('-stream_loop', '-1', '-i', audio);      // 짧은 곡이면 이어 붙여 채운다
@@ -80,23 +86,29 @@ async function makeVideo(cardPaths, outPath, opts = {}) {
    * 카드는 이미 1080×1920 이라 크기는 맞다. 다만 가만히 있는 그림이 12초 이어지면
    * 손가락이 먼저 넘어간다. 그래서 아주 천천히 밀어 넣는 확대를 준다.
    * zoompan 은 프레임 단위로 도므로 d 에 프레임 수를 넣는다. */
-  const frames = Math.round(per * FPS);
   const parts = [];
   for (let i = 0; i < n; i++) {
+    const frames = Math.round(durs[i] * FPS);
+    /* 오래 머무는 카드는 더 천천히 당긴다 — 같은 속도로 두면 끝에서 너무 커진다. */
+    const step = (0.08 / frames).toFixed(6);
     const zoom = motion
       /* 1.0 에서 1.08 까지. 이보다 크면 글자가 화면 밖으로 밀린다. */
-      ? `,zoompan=z='min(zoom+0.00035,1.08)':d=${frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${W}x${H}:fps=${FPS}`
+      ? `,zoompan=z='min(zoom+${step},1.08)':d=${frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${W}x${H}:fps=${FPS}`
       : `,fps=${FPS}`;
     parts.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1${zoom},format=yuv420p[v${i}]`);
   }
 
   /* 카드 사이를 겹쳐 넘긴다. 툭 끊기면 아마추어로 보인다. */
-  let last = 'v0';
+  let prev = 'v0';
+  let elapsed = 0;
   for (let i = 1; i < n; i++) {
-    const offset = (per - fade) * i;
+    /* 앞 카드들이 실제로 머문 시간에서, 이미 겹친 만큼을 뺀 자리에서 넘긴다.
+     * 카드마다 길이가 다르므로 곱셈이 아니라 누적으로 계산해야 한다. */
+    elapsed += durs[i - 1];
+    const offset = elapsed - fade * i;
     const out = i === n - 1 ? 'vout' : `x${i}`;
-    parts.push(`[${last}][v${i}]xfade=transition=fade:duration=${fade}:offset=${offset.toFixed(3)}[${out}]`);
-    last = out;
+    parts.push(`[${prev}][v${i}]xfade=transition=fade:duration=${fade}:offset=${offset.toFixed(3)}[${out}]`);
+    prev = out;
   }
   if (n === 1) parts.push('[v0]null[vout]');
 
@@ -155,6 +167,7 @@ if (require.main === module) {
     log.step(`영상 만드는 중 · 카드 ${cards.length}장`);
     const r = await makeVideo(cards, path.join(demo, 'reel.mp4'), {
       secondsPerCard: cfg.video?.secondsPerCard,
+      secondsLastCard: cfg.video?.secondsLastCard,
       fade: cfg.video?.fade,
       motion: cfg.video?.motion,
       audio: pickAudio(),
