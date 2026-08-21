@@ -50,6 +50,14 @@ async function hasFfmpeg() {
   try { await run(['-version'], 10000); return true; } catch { return false; }
 }
 
+/** audio-scan.js 가 적어둔 구간표. 없으면 빈 객체. */
+function segments() {
+  try {
+    return JSON.parse(fs.readFileSync(
+      path.join(ROOT, 'assets', 'audio', 'segments.json'), 'utf8'));
+  } catch { return {}; }
+}
+
 /** assets/audio/ 에서 음원 하나를 고른다. 없으면 null. */
 function pickAudio(seed = 0) {
   const dir = path.join(ROOT, 'assets', 'audio');
@@ -90,18 +98,25 @@ async function makeVideo(cardPaths, outPath, opts = {}) {
 
   const audio = opts.audio || null;
   if (audio) {
-    /* 곡 앞머리에서 시작하지 않는다.
+    /* 어디서부터 틀 것인가.
      *
-     * 노래의 첫 부분은 대개 조용한 도입부다. 실제로 받아둔 곡들을 재보니 처음 17초가
-     * 45초 지점보다 최대 11dB 낮았다. 그 자리를 쓰면 뒤의 loudnorm 이 도입부를
-     * 억지로 끌어올려, 17초 내내 밍밍한 소리가 난다.
-     * 그래서 본론으로 들어간 자리에서 시작한다. 시작점은 날마다 조금씩 옮겨
-     * 같은 곡이 두 번 걸려도 같은 구간이 나오지 않게 한다. */
+     * 먼저 audio-scan.js 가 찾아둔 "가사가 가장 적은 구간"을 쓴다. 영어 스포츠 카드
+     * 위에 한국어 가사가 얹히면 어색하므로, 반주만 나오는 자리를 미리 골라뒀다.
+     *
+     * 그 기록이 없으면 곡 앞머리를 피하는 것으로 대신한다 — 노래의 첫 부분은 대개
+     * 조용한 도입부라(재보니 45초 지점보다 최대 11dB 낮았다), 그대로 쓰면 뒤의
+     * loudnorm 이 도입부를 억지로 끌어올려 내내 밍밍한 소리가 난다. */
     const dur = await probeSeconds(audio);
-    const want = 30 + (Math.abs(opts.seed || 0) % 4) * 15;   // 30 · 45 · 60 · 75초
+    const marked = segments()[path.basename(audio)];
+
     let seek = 0;
-    if (dur > want + total) seek = want;
-    else if (dur > total + 10) seek = Math.floor((dur - total) / 2);
+    if (marked && Number.isFinite(marked.start) && dur > marked.start + total) {
+      seek = marked.start;
+    } else {
+      const want = 30 + (Math.abs(opts.seed || 0) % 4) * 15;   // 30 · 45 · 60 · 75초
+      if (dur > want + total) seek = want;
+      else if (dur > total + 10) seek = Math.floor((dur - total) / 2);
+    }
     if (seek) args.push('-ss', String(seek));
     args.push('-stream_loop', '-1', '-i', audio);            // 짧은 곡이면 이어 붙여 채운다
   } else {
@@ -210,4 +225,4 @@ if (require.main === module) {
   })().catch(e => { log.fail(e.message); process.exit(1); });
 }
 
-module.exports = { makeVideo, hasFfmpeg, pickAudio, W, H, FPS };
+module.exports = { makeVideo, hasFfmpeg, pickAudio, segments, W, H, FPS };
