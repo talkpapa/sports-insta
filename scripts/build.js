@@ -18,7 +18,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { ROOT, config, tzDate, prettyDateEn, loadState, saveState, log } = require('./lib/util.js');
+const { ROOT, config, env, tzDate, prettyDateEn, loadState, saveState, log } = require('./lib/util.js');
 const { collectNews, fetchArticle } = require('./news.js');
 const { writeScript } = require('./write.js');
 const { findPhotos, mergeCredits } = require('./photo.js');
@@ -72,6 +72,14 @@ async function main() {
       '   이 컴퓨터에서 돌리시려면: winget install Gyan.FFmpeg');
   }
 
+  /* 키가 없으면 여기서 멈춘다. 예전에는 소재마다 원고를 쓰다가 하나씩 터졌고,
+   * 기사 여덟 건을 다 받아온 뒤에야 같은 이유로 다 실패했다는 것이 드러났다. */
+  if (!env().GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY 가 없습니다.\n' +
+      '   로컬: .env 파일에 넣으십시오\n' +
+      '   서버: 저장소 Settings → Secrets → Actions 에 넣고, 워크플로가 env 로 넘기는지 보십시오');
+  }
+
   /* ── ① 뉴스 ───────────────────────────────────── */
   /* 원고가 "이 소재는 쓰면 안 된다"고 되돌려 보내는 일이 있다(사망·사고 등).
    * 그래서 필요한 개수보다 넉넉히 받아 둔다. */
@@ -94,6 +102,10 @@ async function main() {
     .filter(p => p.date === today)
     .reduce((max, p) => Math.max(max, Number(p.slot) || 0), 0);
 
+  /* 원고를 쓰다 던진 오류의 수. 모델이 "이 소재는 쓰지 말자"고 한 것과는 다르다.
+   * 앞의 것은 고장이고 뒤의 것은 정상 판단이라, 끝에서 둘을 갈라 다뤄야 한다. */
+  let errors = 0;
+
   for (const item of news) {
     if (made.length >= perDay) break;
 
@@ -106,7 +118,7 @@ async function main() {
 
     let plan;
     try { plan = await writeScript(item); }
-    catch (e) { log.warn(`원고 실패 — ${e.message.split('\n')[0]}`); continue; }
+    catch (e) { errors++; log.warn(`원고 실패 — ${e.message.split('\n')[0]}`); continue; }
 
     if (plan.skip) { log.info(`건너뜀 — ${plan.skip_reason}`); continue; }
     log.ok(`원고 · ${plan.slides.map(s => s.headline).join(' / ')}`);
@@ -166,9 +178,19 @@ async function main() {
   }
 
   if (!made.length) {
+    /* 소재가 없어서 못 만든 것과, 고장이 나서 못 만든 것을 갈라야 한다.
+     *
+     * 전에는 둘 다 "실패 아님"으로 끝냈다. 그래서 서버에 GEMINI_API_KEY 가 전달되지
+     * 않아 여덟 건이 내리 터진 날에도 워크플로가 초록불로 끝났고, 아무도 몰랐다.
+     * 무인으로 도는 파이프라인에서 조용한 성공은 조용한 실패보다 나쁘다. */
+    if (errors) {
+      throw new Error(`${errors}건이 모두 오류로 끝났습니다 — 위 메시지를 보십시오.\n` +
+        '   (소재가 없어서가 아니라 무언가 고장난 것입니다. 시크릿·키를 먼저 확인하십시오.)');
+    }
     log.warn('쓸 만한 소재가 없었습니다 — 큐를 만들지 않고 끝냅니다(실패 아님).');
     return;
   }
+  if (errors) log.warn(`${errors}건은 오류로 건너뛰었습니다 (만든 것 ${made.length}편).`);
 
   /* 나간 이야기를 기억해 둔다 — 내일 같은 소식을 또 올리지 않기 위해 */
   st.recent_titles = [...(st.recent_titles || []), ...made.map(m => m.item.title)].slice(-60);

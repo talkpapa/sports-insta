@@ -27,8 +27,14 @@ function env() {
       if (i > 0) out[t.slice(0, i).trim()] = t.slice(i + 1).trim();
     }
   }
-  for (const k of ['IG_TOKEN', 'FOOTBALL_DATA_KEY', 'SPORTSDB_KEY']) {
-    if (process.env[k]) out[k] = process.env[k];
+  /* 환경변수가 .env 를 이긴다. 서버에는 .env 가 없고 시크릿이 환경변수로 들어온다.
+   *
+   * 예전에는 여기에 읽을 키 이름을 적어두고 그것만 가져왔다. 그러다 파이프라인이
+   * 바뀌면서 GEMINI_API_KEY 가 목록에 없는 채로 남았고, 서버 빌드가 여덟 건 내리
+   * "키가 없습니다"로 넘어갔다. 로컬에는 .env 가 있어 잘 돌았으므로 하루가 지나서야
+   * 알았다. 목록을 두면 키가 늘 때마다 여기를 고쳐야 하고, 잊으면 조용히 깨진다. */
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v) out[k] = v;
   }
   return out;
 }
