@@ -1,0 +1,35 @@
+# 대조 — 우리가 올렸다고 기록한 것이 실제로 계정에 있는지 본다.
+#
+# state.json 은 코드가 남긴 기록일 뿐이다. 게시 도중 워크플로가 죽거나, 올라간 뒤
+# 인스타가 내렸거나, 사람이 지웠으면 기록과 계정이 어긋난다. 무인으로 도는
+# 파이프라인에서는 아무도 알아채지 못하므로 주기적으로 맞춰본다.
+name: 게시 대조
+on:
+  schedule:
+    - cron: '0 13 * * *'      # 한국시간 밤 10시 — 그날 세 편이 다 나간 뒤
+  workflow_dispatch:
+    inputs:
+      days:
+        description: '며칠치를 볼지'
+        required: false
+        default: '7'
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: 대조
+        env:
+          IG_TOKEN: ${{ secrets.IG_TOKEN }}
+        run: |
+          if [ -z "$IG_TOKEN" ]; then
+            echo "::error::IG_TOKEN 시크릿이 비어 있습니다."
+            exit 1
+          fi
+          node scripts/ig.js check "${{ inputs.days || 7 }}"

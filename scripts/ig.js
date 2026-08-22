@@ -1,6 +1,7 @@
 /* ig.js — 인스타그램에 릴스를 올린다. (Instagram API with Instagram Login v23.0)
  *
  *   node scripts/ig.js status     계정·최근 게시·오늘 진행 상황
+ *   node scripts/ig.js check      기록한 게시물이 실제로 계정에 있는지 대조
  *   node scripts/ig.js queue      다음 슬롯 하나를 게시한다 (자동 운전용)
  *   node scripts/ig.js refresh    토큰 60일 연장
  *
@@ -67,6 +68,70 @@ async function cmdStatus() {
     console.log(h < gap ? `  ⛔ ${gap}시간 규칙에 걸린다` : `  ✅ ${gap}시간 규칙 통과`);
   }
   if (st.token_expires_around) log.info(`토큰 만료 예상 ${st.token_expires_around}`);
+}
+
+/* ── 기록과 실제 계정을 대조한다 ────────────────────
+ *
+ * state.json 은 "우리 코드가 올렸다고 여기는 것"이지 "실제로 계정에 있는 것"이
+ * 아니다. 게시 도중 워크플로가 죽거나, 올라간 뒤 인스타가 내렸거나, 사람이
+ * 지웠으면 둘이 어긋난다. 무인으로 도는 파이프라인에서는 아무도 알아채지 못한다.
+ *
+ * 밖에서는 확인할 방법이 없다. 로그인하지 않고 릴스 주소를 열면 인스타가 껍데기만
+ * 돌려주는데, 없는 주소도 똑같이 200 이고 크기까지 거의 같다. 그래서 계정에 묻는다.
+ *
+ *   node scripts/ig.js check        최근 7일
+ *   node scripts/ig.js check 30     최근 30일
+ */
+async function cmdCheck() {
+  const cfg = config();
+  const tz = cfg.account?.timezone || 'Asia/Seoul';
+  const days = Math.max(1, Math.min(90, Number(process.argv[3]) || 7));
+  const since = tzDate(-(days - 1), tz);
+
+  const me = await api('/me', { fields: 'username,account_type,media_count' });
+  log.step(`${me.username} · 게시물 ${me.media_count}개 · 최근 ${days}일 대조`);
+
+  /* 계정에 실제로 있는 것 */
+  const live = new Map();
+  let next = null;
+  for (let page = 0; page < 5; page++) {
+    const j = next
+      ? await (await fetch(next)).json()
+      : await api('/me/media', { fields: 'id,permalink,timestamp,media_type', limit: 50 });
+    for (const m of j.data || []) live.set(String(m.id), m);
+    next = j.paging?.next;
+    if (!next) break;
+  }
+
+  /* 우리가 올렸다고 기록해 둔 것 */
+  const st = loadState();
+  const mine = (st.posted_log || []).filter(p => (p.date || '') >= since);
+
+  let ok = 0;
+  const missing = [];
+  for (const p of mine) {
+    const hit = live.get(String(p.media_id));
+    if (hit) {
+      ok++;
+      log.ok(`${p.date} 슬롯${p.slot} · ${hit.media_type} · ${hit.permalink}`);
+    } else {
+      missing.push(p);
+      log.fail(`${p.date} 슬롯${p.slot} · 계정에 없습니다 — ${p.permalink}`);
+    }
+  }
+
+  /* 계정에는 있는데 기록에 없는 것 — 손으로 올렸거나 옛 판이 올린 것 */
+  const known = new Set(mine.map(p => String(p.media_id)));
+  const extra = [...live.values()]
+    .filter(m => m.timestamp.slice(0, 10) >= since && !known.has(m.id));
+
+  console.log('');
+  log.step(`기록 ${mine.length}편 중 ${ok}편 확인` + (missing.length ? ` · ${missing.length}편 없음` : ''));
+  if (extra.length) {
+    log.warn(`기록에 없는 게시물 ${extra.length}개`);
+    extra.forEach(m => console.log(`     ${m.timestamp.slice(0, 16).replace('T', ' ')} · ${m.permalink}`));
+  }
+  if (missing.length) process.exit(1);
 }
 
 /* ── 컨테이너가 다 익을 때까지 기다린다 ──────────────
@@ -206,9 +271,9 @@ async function cmdRefresh() {
 
 /* ── 실행 ────────────────────────────────────────── */
 const cmd = process.argv[2];
-const run = { status: cmdStatus, queue: cmdQueue, refresh: cmdRefresh }[cmd];
+const run = { status: cmdStatus, check: cmdCheck, queue: cmdQueue, refresh: cmdRefresh }[cmd];
 if (!run) {
-  console.log('사용법: node scripts/ig.js <status|queue|refresh>');
+  console.log('사용법: node scripts/ig.js <status|check|queue|refresh>');
   process.exit(1);
 }
 run().catch(e => { log.fail(e.message); process.exit(1); });
