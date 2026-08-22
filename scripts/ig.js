@@ -103,9 +103,15 @@ async function cmdCheck() {
     if (!next) break;
   }
 
-  /* 우리가 올렸다고 기록해 둔 것 */
+  /* 우리가 올렸다고 기록해 둔 것.
+   *
+   * 사람이 인스타에서 지운 것은 빼고 본다. 기록에서 지우지는 않는다 — 무엇이
+   * 언제 나갔는지는 남아 있어야 한다. 다만 지운 줄 아는 것을 매일 밤 빨간 ❌ 로
+   * 띄우면 그 표시가 무뎌지고, 정작 진짜로 어긋난 날을 지나치게 된다. */
   const st = loadState();
-  const mine = (st.posted_log || []).filter(p => (p.date || '') >= since);
+  const inWindow = (st.posted_log || []).filter(p => (p.date || '') >= since);
+  const removed = inWindow.filter(p => p.deleted);
+  const mine = inWindow.filter(p => !p.deleted);
 
   let ok = 0;
   const missing = [];
@@ -121,11 +127,12 @@ async function cmdCheck() {
   }
 
   /* 계정에는 있는데 기록에 없는 것 — 손으로 올렸거나 옛 판이 올린 것 */
-  const known = new Set(mine.map(p => String(p.media_id)));
+  const known = new Set(inWindow.map(p => String(p.media_id)));
   const extra = [...live.values()]
     .filter(m => m.timestamp.slice(0, 10) >= since && !known.has(m.id));
 
   console.log('');
+  if (removed.length) log.info(`지운 것 ${removed.length}편은 세지 않았습니다`);
   log.step(`기록 ${mine.length}편 중 ${ok}편 확인` + (missing.length ? ` · ${missing.length}편 없음` : ''));
   if (extra.length) {
     log.warn(`기록에 없는 게시물 ${extra.length}개`);
