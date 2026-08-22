@@ -157,6 +157,10 @@ const ARCHIVE = new Set([
   'libraryofcongress', 'thegetty', 'smithsonian', 'nypl', 'statensmuseum',
   'museumsvictoria', 'brooklynmuseum', 'clevelandmuseum', 'sciencemuseum',
   'digitaltmuseum', 'wikimedia_commons', 'floraon', 'biodiversity',
+  /* 정부·군 자료실도 같다. 자유 라이선스로 풀려 있어 검색에 잘 걸리는데,
+   * 대부분 수십 년 된 기록사진이라 오늘 이적 소식 배경으로는 어울리지 않는다. */
+  'usdoe', 'usnavy', 'usarmy', 'usairforce', 'nasa', 'usforestservice',
+  'nationalarchives', 'defenseimagery',
 ]);
 
 /* 제목으로 걸러내야 하는 것들.
@@ -176,6 +180,10 @@ const BAD_TITLE = [
   'still life', 'academy', 'museum', 'gallery', 'antique', 'vintage print',
   /* 사람이 아니라 문서·지도 */
   'map of', 'poster for', 'diagram', 'manuscript', 'newspaper',
+  /* 사진이 아니라 그려낸 것. category=photograph 로도 안 걸러진다 —
+   * 실제로 워드프레스 마스코트 그림(wapuu)이 축구 사진으로 뽑혔다. */
+  'wallpaper', 'wapuu', 'clipart', 'clip art', 'cartoon', 'mascot',
+  'vector', 'render', '3d model', 'template', 'mockup', 'seamless pattern',
 ];
 
 function titleLooksBad(title) {
@@ -205,6 +213,12 @@ function titleMatches(title, query) {
   const words = String(query).toLowerCase().split(/\s+/).filter(w => w.length > 2);
   if (!words.length) return true;
   return words.some(w => t.includes(w));
+}
+
+/** 사진 하나를 가리키는 이름표.
+ * 주소는 제공처마다 크기별로 여러 개라 믿을 수 없다. 작가와 제목으로 잡는다. */
+function photoKey(p) {
+  return `${p.author || ''}|${p.title || ''}`.toLowerCase().trim();
 }
 
 /** 세로 화면에 잘 맞는 순서로 줄 세운다 */
@@ -253,74 +267,109 @@ async function download(c) {
   return null;
 }
 
-/**
- * 검색어에 맞는 사진을 여러 장 받아 온다.
+/* 어느 소재에나 붙는 축구 장면들.
  *
- * 카드 석 장에 같은 사진을 깔면 넘길 이유가 없어진다. 배경이 바뀌어야 손가락이
- * 움직인다. 그래서 같은 검색어의 상위 후보에서 서로 다른 사진을 골라 온다 —
- * 소재는 같고 그림만 달라지므로 한 편의 결이 흐트러지지 않는다.
- *
- * 원하는 만큼 못 채울 수 있다. 그때는 있는 만큼만 돌려준다 (부르는 쪽이 돌려 쓴다).
- * @returns {Promise<Array<{buffer:Buffer, credit:string, meta:object}>>}
- */
-async function findPhotos(query, want = 1) {
-  const E = env();
+ * 두 가지 일에 쓴다.
+ *   ① 검색어가 통하지 않을 때 물러설 자리. 제목이 검색어와 겹쳐야 한다는 규칙이
+ *      세서 없는 장면을 찾으면 빈손이 되는데, 원고는 이미 무료 한도를 치른 것이라
+ *      통째로 버리기 아깝다.
+ *   ② 검색어 하나로는 안 쓴 사진이 모자랄 때 더 긁어올 자리. "football pitch" 는
+ *      쓸 만한 것이 세 장뿐이라, 그 셋을 쓰고 나면 같은 그림이 계속 돌아온다. */
+const WIDE = [
+  'football stadium crowd', 'soccer ball grass', 'football stadium seats',
+  'soccer field lines', 'football grass texture', 'green football field',
+  'soccer stadium aerial', 'stadium seats colourful', 'sports stadium architecture',
+  'football players training', 'empty football stadium', 'football pitch',
+  'goal net close up', 'soccer goal net', 'football goal post',
+  'football boots grass', 'football training ground', 'stadium lights night',
+];
 
-  /* 검색어가 통하지 않을 때 물러설 자리.
-   *
-   * 제목이 검색어와 겹쳐야 한다는 규칙이 세서, 없는 장면을 찾으면 빈손이 되고
-   * 그 소재가 통째로 버려진다. 실제로 "stadium tunnel" 하나 때문에 다 만든 원고를
-   * 버렸다. 원고는 이미 값(무료 한도)을 치른 것이라 그대로 버리기 아깝다.
-   * 그래서 못 찾으면 축구 계정에서 어디에 붙여도 어색하지 않은 장면으로 물러선다. */
-  const FALLBACKS = ['empty football stadium', 'football pitch', 'football stadium seats'];
+/** 검색어 하나로 후보를 받아 순위대로 돌려준다 */
+async function candidatesFor(query, want) {
+  const E = env();
   const providers = E.PEXELS_KEY
     ? [{ p: pexels, key: E.PEXELS_KEY }, { p: openverse }]
     : [{ p: openverse }];
+
+  const out = [];
+  for (const { p, key } of providers) {
+    try {
+      const list = rank(await p.search(query, key, want), query);
+      for (const c of list) out.push({ c, provider: p });
+    } catch (e) {
+      log.warn(`${p.name} 검색 실패 — ${e.message}`);
+    }
+  }
+  return out;
+}
+
+/**
+ * 검색어에 맞는 사진을 여러 장 받아 온다.
+ *
+ * 카드 석 장에 같은 사진을 깔면 넘길 이유가 없어진다. 배경이 바뀌어야 손가락이 움직인다.
+ *
+ * 검색어 하나에 매달리지 않는다. 순위를 매기는 방식이 완전히 결정적이라 같은 검색어는
+ * 언제나 같은 사진을 같은 순서로 돌려주는데, 검색어를 통하는 것 몇 개로 못박은 뒤로는
+ * 서로 다른 세 편이 2·3번 카드 배경을 통째로 공유하는 일이 실제로 일어났다.
+ * 그래서 모자라면 다른 장면으로 넘어가며 채운다. 같은 사진을 되쓰는 것은 맨 마지막이다.
+ *
+ * @param {Set<string>} opts.exclude  최근에 쓴 사진 (build.js 가 state.json 에서 들고 온다)
+ * @returns {Promise<Array<{buffer:Buffer, credit:string, meta:object}>>}
+ */
+async function findPhotos(query, want = 1, opts = {}) {
+  const skip = opts.exclude instanceof Set ? opts.exclude : new Set();
 
   const got = [];
   /* 주소가 달라도 작가와 제목이 같으면 같은 사진이다. 제공처가 같은 것을
    * 크기별로 여러 번 올려두기 때문에 이것을 안 보면 똑같은 그림이 겹친다. */
   const seen = new Set();
+  const tried = new Set();
+  /* 안 쓴 것이 정말 하나도 없을 때를 대비해, 걸러낸 것도 모아 둔다. */
+  const reserve = [];
 
-  for (const { p, key } of providers) {
-    let candidates;
-    try {
-      candidates = rank(await p.search(query, key, want), query);
-    } catch (e) {
-      log.warn(`${p.name} 검색 실패 — ${e.message}`);
-      continue;
-    }
-    if (!candidates.length) { log.info(`${p.name} — 쓸 만한 사진 없음`); continue; }
+  /* 원래 검색어부터, 그다음 넓은 장면들 */
+  const queries = [query, ...WIDE.filter(q => q !== query)];
+
+  for (const q of queries) {
+    if (got.length >= want) break;
+    if (tried.has(q)) continue;
+    tried.add(q);
+
+    const list = await candidatesFor(q, want);
+    if (!list.length) continue;
+    if (q !== query) log.info(`"${q}" 로 더 찾습니다 (${got.length}/${want}장)`);
 
     /* 필요한 장수의 네 배까지만 두드려 본다. 안 열리는 주소를 끝없이 붙들고
      * 있으면 빌드가 통째로 늦어진다. */
-    for (const c of candidates.slice(0, Math.max(6, want * 4))) {
+    for (const { c, provider } of list.slice(0, Math.max(6, want * 4))) {
       if (got.length >= want) break;
-      const key2 = `${c.author}|${c.title}`.toLowerCase().trim();
-      if (seen.has(key2)) continue;
+      const k = photoKey(c);
+      if (seen.has(k)) continue;
+      if (skip.has(k)) { reserve.push({ c, provider }); continue; }
+
       const buffer = await download(c);
       if (!buffer) continue;
-      seen.add(key2);
-      log.ok(`${p.name} · ${c.width}×${c.height} · ${c.license} · ${c.author || '작자미상'}`);
-      got.push({ buffer, credit: p.credit(c), meta: c });
+      seen.add(k);
+      log.ok(`${provider.name} · ${c.width}×${c.height} · ${c.license} · ${c.author || '작자미상'}`);
+      got.push({ buffer, credit: provider.credit(c), meta: c });
     }
+  }
+
+  /* 그래도 모자라면 최근에 쓴 것을 도로 꺼낸다. 겹치는 그림이 보기 싫긴 해도,
+   * 그것 때문에 다 쓴 원고를 버리는 것보다는 낫다. */
+  for (const { c, provider } of reserve) {
     if (got.length >= want) break;
-    if (!got.length) log.info(`${p.name} — 후보는 있었지만 받아지지 않음`);
+    const k = photoKey(c);
+    if (seen.has(k)) continue;
+    const buffer = await download(c);
+    if (!buffer) continue;
+    seen.add(k);
+    log.info(`예전에 쓴 사진을 다시 씁니다 — ${c.author || '작자미상'}`);
+    got.push({ buffer, credit: provider.credit(c), meta: c });
   }
 
-  if (!got.length) {
-    for (const alt of FALLBACKS) {
-      if (alt === query) continue;
-      log.info(`"${query}" 로 못 찾아 "${alt}" 로 물러섭니다.`);
-      const again = await findPhotos(alt, want);
-      if (again.length) return again;
-    }
-    return [];
-  }
-
-  if (got.length < want) {
-    log.info(`사진 ${got.length}장만 구했습니다 (원한 ${want}장) — 돌려 씁니다.`);
-  }
+  if (!got.length) log.info(`"${query}" — 쓸 만한 사진을 하나도 못 구했습니다.`);
+  else if (got.length < want) log.info(`사진 ${got.length}장만 구했습니다 (원한 ${want}장) — 돌려 씁니다.`);
   return got;
 }
 
@@ -360,4 +409,4 @@ if (require.main === module) {
   })().catch(e => { log.fail(e.message); process.exit(1); });
 }
 
-module.exports = { findPhoto, findPhotos, mergeCredits, MIN_W, MIN_H };
+module.exports = { findPhoto, findPhotos, mergeCredits, photoKey, MIN_W, MIN_H };

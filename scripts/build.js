@@ -21,7 +21,7 @@ const path = require('path');
 const { ROOT, config, env, tzDate, prettyDateEn, loadState, saveState, log } = require('./lib/util.js');
 const { collectNews, fetchArticle } = require('./news.js');
 const { writeScript } = require('./write.js');
-const { findPhotos, mergeCredits } = require('./photo.js');
+const { findPhotos, mergeCredits, photoKey } = require('./photo.js');
 const { renderCards } = require('./render.js');
 const { makeVideo, hasFfmpeg, pickAudio } = require('./video.js');
 
@@ -47,8 +47,16 @@ async function main() {
   const cfg = config();
   const tz = cfg.account?.timezone || 'Asia/Seoul';
   const today = tzDate(0, tz);
-  const perDay = ONE ? 1 : Math.max(1, Math.min(10, cfg.publish?.perDay || 3));
+  const perDay = Math.max(1, Math.min(10, cfg.publish?.perDay || 3));
   const st = loadState();
+
+  /* 오늘 몇 편을 더 만들면 되는가.
+   *
+   * 하루 중간에 --force 로 다시 만들면 예전에는 언제나 perDay 편을 새로 만들었다.
+   * 이미 한 편이 나간 뒤였으므로 그날 몫이 네 편이 되고, 게시 쪽은 세 편에서
+   * 멈추므로 마지막 하나는 만들어만 놓고 아무도 안 가져가는 신세가 된다. */
+  const postedToday = (st.posted_log || []).filter(p => p.date === today && !p.deleted).length;
+  const target = ONE ? 1 : Math.max(0, perDay - postedToday);
 
   const queueDir = path.join(ROOT, 'queue', today);
   const doneDir  = path.join(ROOT, 'queue', '_done', today);
@@ -83,7 +91,12 @@ async function main() {
   /* ── ① 뉴스 ───────────────────────────────────── */
   /* 원고가 "이 소재는 쓰면 안 된다"고 되돌려 보내는 일이 있다(사망·사고 등).
    * 그래서 필요한 개수보다 넉넉히 받아 둔다. */
-  const news = await collectNews(perDay + 5);
+  if (!target) {
+    log.info(`오늘 ${postedToday}/${perDay}편이 이미 나갔습니다 — 더 만들지 않습니다.`);
+    return;
+  }
+
+  const news = await collectNews(target + 5);
   if (!news.length) { log.warn('뉴스를 하나도 못 받았습니다 — 오늘은 넘어갑니다(실패 아님).'); return; }
 
   if (!DRY) {
@@ -102,14 +115,18 @@ async function main() {
     .filter(p => p.date === today)
     .reduce((max, p) => Math.max(max, Number(p.slot) || 0), 0);
 
+  /* 최근에 쓴 사진. 같은 그림이 며칠 사이에 또 깔리지 않게 한다.
+   * 창고가 42장 남짓이라 다 기억하면 금세 바닥나므로, 최근 것만 들고 간다. */
+  const usedPhotos = new Set(st.recent_photos || []);
+
   /* 원고를 쓰다 던진 오류의 수. 모델이 "이 소재는 쓰지 말자"고 한 것과는 다르다.
    * 앞의 것은 고장이고 뒤의 것은 정상 판단이라, 끝에서 둘을 갈라 다뤄야 한다. */
   let errors = 0;
 
   for (const item of news) {
-    if (made.length >= perDay) break;
+    if (made.length >= target) break;
 
-    log.step(`[${made.length + 1}/${perDay}] ${item.title.slice(0, 64)}`);
+    log.step(`[${made.length + 1}/${target}] ${item.title.slice(0, 64)}`);
 
     /* ── ② 원고 ── */
     /* 기사 본문을 먼저 읽어 온다. 못 읽으면 요약만 가지고 쓴다. */
@@ -126,7 +143,7 @@ async function main() {
     /* ── ③ 사진 ── */
     /* 카드 수만큼 받는다. 배경이 장마다 바뀌어야 넘길 이유가 생긴다.
      * 모자라면 있는 것을 돌려 쓴다 — 한 장이라도 있으면 카드는 나온다. */
-    const photos = await findPhotos(plan.photo_query, plan.slides.length);
+    const photos = await findPhotos(plan.photo_query, plan.slides.length, { exclude: usedPhotos });
     if (!photos.length) { log.warn(`사진을 못 찾음 ("${plan.photo_query}") — 이 소재는 넘깁니다`); continue; }
     const credit = mergeCredits(photos);
 
@@ -168,6 +185,9 @@ async function main() {
     fs.writeFileSync(path.join(queueDir, id + '.md'),
       queueMarkdown({ id, today, plan, item, credit, video, videoUrl, coverUrl }), 'utf8');
 
+    /* 이번에 쓴 것을 바로 기억한다 — 같은 빌드 안의 다음 편이 또 고르지 않게. */
+    for (const ph of photos) usedPhotos.add(photoKey(ph.meta));
+
     made.push({ item, plan, credit, photos: photos.length, seconds: video.seconds });
   }
 
@@ -194,6 +214,9 @@ async function main() {
 
   /* 나간 이야기를 기억해 둔다 — 내일 같은 소식을 또 올리지 않기 위해 */
   st.recent_titles = [...(st.recent_titles || []), ...made.map(m => m.item.title)].slice(-60);
+  /* 쓴 사진도 마찬가지. 창고가 40장 남짓이라 30장만 들고 간다 —
+   * 다 기억하면 며칠 만에 "안 쓴 사진이 없음"이 되어 규칙이 무의미해진다. */
+  st.recent_photos = [...usedPhotos].slice(-30);
   saveState(st);
 
   const pruned = pruneOldReels(cfg.hosting?.keepDays ?? 14);

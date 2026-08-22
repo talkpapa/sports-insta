@@ -111,12 +111,19 @@ Hard rules:
   anything where a punchy card would read as callous. Also skip if the input is too
   thin to explain anything honestly.
 - photo_query must be chosen from this exact list, and nothing else:
-    "empty football stadium"    "football pitch"        "football boots grass"
-    "soccer ball grass"         "football stadium seats" "goal net close up"
-    "football training ground"
+    "empty football stadium"     "football pitch"           "football boots grass"
+    "soccer ball grass"          "football stadium seats"   "goal net close up"
+    "football training ground"   "football stadium crowd"   "soccer field lines"
+    "football grass texture"     "football players training" "soccer stadium aerial"
+    "green football field"       "stadium seats colourful"  "sports stadium architecture"
+    "football goal post"         "stadium lights night"     "soccer goal net"
   These are the only queries the free photo libraries reliably answer. Anything else —
   "stadium tunnel", "empty locker room", "corner flag close up" — returns nothing and
-  the whole story gets dropped. Pick whichever of the seven best suits the story.
+  the whole story gets dropped.
+  VARY YOUR CHOICE. Do not reach for the same one every time: the libraries return the
+  same photos in the same order for a given query, so repeating the query means
+  repeating the picture. Pick the one that genuinely fits this story's mood — a
+  collapsed deal is not a roaring crowd — and when several fit, take the less obvious.
   Never name a person, team, or logo.
 
 Style:
