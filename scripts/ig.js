@@ -11,7 +11,9 @@
  *  - 게시는 API 로 삭제할 수 없다. 올리기 전에 스스로 멈출 이유를 먼저 찾는다.
  *  - 한 번 돌 때 한 편만 올린다. 몰아서 쏟으면 서로의 도달을 깎고 스팸으로 보인다.
  */
-const { config, env, tzDate, loadState, saveState, sleep, log } = require('./lib/util.js');
+const fs = require('fs');
+const path = require('path');
+const { ROOT, config, env, tzDate, loadState, saveState, sleep, log } = require('./lib/util.js');
 const { nextSlot, pendingSlots, markDone } = require('./lib/queue.js');
 
 const API = 'https://graph.instagram.com/v23.0';
@@ -131,14 +133,34 @@ async function cmdCheck() {
   const extra = [...live.values()]
     .filter(m => m.timestamp.slice(0, 10) >= since && !known.has(m.id));
 
+  /* 만들어 두고 아무도 안 가져간 큐가 남아 있는가.
+   *
+   * 게시가 검사에 걸리면 그 편만 건너뛰고 워크플로는 초록불로 끝난다. 한 편을
+   * 거르는 것 자체는 옳지만, 같은 이유로 매번 걸리면 큐가 영영 안 빠지는데도
+   * 아무도 모른다. 실제로 캡션 검사의 오탐 하나 때문에 두 편이 하루를 통째로
+   * 흘려보냈다. 어제 것이 아직 남아 있으면 그건 이미 놓친 것이다. */
+  const qRoot = path.join(ROOT, 'queue');
+  const stale = [];
+  if (fs.existsSync(qRoot)) {
+    for (const d of fs.readdirSync(qRoot)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d >= tzDate(0, tz)) continue;
+      const left = fs.readdirSync(path.join(qRoot, d)).filter(f => f.endsWith('.md'));
+      if (left.length) stale.push(`${d} ${left.length}편`);
+    }
+  }
+
   console.log('');
   if (removed.length) log.info(`지운 것 ${removed.length}편은 세지 않았습니다`);
+  if (stale.length) {
+    log.fail(`나가지 못하고 남은 큐: ${stale.join(', ')}`);
+    console.log('     게시 로그에서 검사에 걸린 항목을 보십시오.');
+  }
   log.step(`기록 ${mine.length}편 중 ${ok}편 확인` + (missing.length ? ` · ${missing.length}편 없음` : ''));
   if (extra.length) {
     log.warn(`기록에 없는 게시물 ${extra.length}개`);
     extra.forEach(m => console.log(`     ${m.timestamp.slice(0, 16).replace('T', ' ')} · ${m.permalink}`));
   }
-  if (missing.length) process.exit(1);
+  if (missing.length || stale.length) process.exit(1);
 }
 
 /* ── 컨테이너가 다 익을 때까지 기다린다 ──────────────

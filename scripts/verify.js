@@ -59,8 +59,15 @@ async function main() {
   const tags = s.caption.match(/#[^\s#]+/g) || [];
   check(tags.length <= MAX_TAGS, `해시태그 ${tags.length}개 (한도 ${MAX_TAGS})`);
 
-  /* 데이터가 비면 문장에 undefined 가 그대로 박힌다. 그대로 나가면 끝이다. */
-  const junk = s.caption.match(/undefined|NaN|null|\[object/i);
+  /* 데이터가 비면 문장에 undefined 가 그대로 박힌다. 그대로 나가면 끝이다.
+   *
+   * 다만 낱말 경계를 봐야 한다. 대소문자를 무시하고 그냥 찾으면 평범한 영어 낱말
+   * 안에 걸린다 — 실제로 선수 이름 "Fernandes"(Fer-nan-des)가 NaN 으로 잡혀
+   * 멀쩡한 게시물 두 편이 하루 종일 나가지 못했다. "financial", "annulled",
+   * "tenant" 도 같은 이유로 걸렸을 것이다.
+   * NaN 은 대소문자까지 그대로 본다 — 소문자 nan 은 사람 이름에 흔하다. */
+  const junk = s.caption.match(/\bundefined\b|\bnull\b|\[object [A-Z]/)
+            || s.caption.match(/\bNaN\b/);
   check(!junk, junk ? `캡션에 오류 흔적: "${junk[0]}"` : '캡션에 오류 흔적 없음');
 
   /* 사진 출처가 빠지면 라이선스 위반이다 (CC BY 계열은 표기가 의무다) */
