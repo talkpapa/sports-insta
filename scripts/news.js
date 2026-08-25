@@ -152,6 +152,15 @@ async function collectNews(want = 5) {
     'live!', ' live blog', '– live', '- live', 'as it happened', 'clockwatch',
     'rumours:', 'gossip', 'transfer talk:', 'round-up', 'roundup',
     'quiz', 'podcast', 'newsletter', 'sign up', 'what to watch', 'best of',
+    /* 아래는 8월 24일에 여섯 건을 건너뛰게 만든 것들이다. 설명형으로 바꾼 뒤로는
+     * "무슨 일이 있었다"만 있고 왜인지가 없는 글이 쓸모없어졌는데, 이 꼴들이
+     * 정확히 그렇다. 원고를 시켜보고 버리면 무료 한도만 태우므로 미리 뺀다. */
+    'papers:',            // 조간 신문 소문 모음
+    'latest:',            // "Man Utd latest: Baleba passes medical" — 제목이 전부다
+    'european football:', // 주간 경기 정리
+    'all deals',          // 이적 창구 목록 페이지
+    'transfer window summer', 'transfer window winter',
+    'ratings', 'player ratings', 'talking points', 'things we learned',
   ];
   const isStory = it => {
     const t = (it.title || '').toLowerCase();
