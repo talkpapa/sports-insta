@@ -181,7 +181,8 @@ async function waitFinished(id, what) {
 async function publishReel(meta, caption) {
   const cfg = config();
   const tz = cfg.account?.timezone || 'Asia/Seoul';
-  const today = tzDate(0, tz);
+  /* 기록에 남길 날짜는 큐가 속한 날. 안 주면 오늘. */
+  const today = meta.day || tzDate(0, tz);
   const perDay = cfg.publish?.perDay || 3;
   const minGap = cfg.publish?.minGapHours ?? 1.5;
   const st = loadState();
@@ -256,15 +257,19 @@ async function cmdQueue() {
   const postedToday = (st.posted_log || []).filter(p => p.date === today).length;
   if (postedToday >= perDay) { log.info(`오늘 ${postedToday}/${perDay}편 완료 — 게시 생략.`); return; }
 
-  const s = nextSlot(today);
-  if (!s) { log.info(`오늘(${today}) 남은 큐가 없습니다 — 게시 생략.`); return; }
+  /* 오늘 것이 없으면 어제 것까지 본다 (자정을 넘겨 도는 날이 있다) */
+  const s = nextSlot(today, tzDate(-1, tz));
+  if (!s) { log.info(`남은 큐가 없습니다 — 게시 생략.`); return; }
   if (!s.meta.video || !s.caption) throw new Error(`슬롯 ${s.slot} 에 영상 또는 캡션이 없습니다.`);
+  if (s.day !== today) log.info(`${s.day} 에서 넘어온 슬롯 ${s.slot} 을 올립니다.`);
 
-  await publishReel({ ...s.meta, slot: s.slot }, s.caption);
+  /* 게시 기록은 큐가 속한 날짜로 남긴다. 자정을 넘겨 나간 어제 몫을 오늘로 세면
+   * 오늘 몫이 한 칸 줄고, 빌드의 슬롯 번호도 어긋난다. */
+  await publishReel({ ...s.meta, slot: s.slot, day: s.day }, s.caption);
 
-  markDone(today, s.file);
-  log.ok(`queue/_done/${today}/${s.slot}.md 로 옮겼습니다.`);
-  log.info(`오늘 진행 ${postedToday + 1}/${perDay}편 · 남은 큐 ${pendingSlots(today).length}편`);
+  markDone(s.day, s.file);
+  log.ok(`queue/_done/${s.day}/${s.slot}.md 로 옮겼습니다.`);
+  log.info(`남은 큐 ${pendingSlots(s.day).length}편`);
 }
 
 /* ── 토큰 연장 ───────────────────────────────────── */

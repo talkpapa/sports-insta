@@ -43,15 +43,40 @@ function doneCount(today) {
 }
 
 /**
- * 다음에 나갈 슬롯 하나를 읽어 준다. 없으면 null.
- * @returns {{file:string, slot:string, meta:object, images:string[], caption:string}|null}
+ * 다음에 나갈 것이 어느 날짜의 큐에 있는지 찾는다.
+ *
+ * 오늘 것이 먼저다. 오늘 것이 없으면 어제 것을 본다 —
+ * GitHub 예약 실행이 최대 세 시간 가까이 늦어서, 밤 9시 반에 잡아둔 마지막
+ * 게시가 자정을 넘겨 0시 13분에 돈 적이 있다. 그 시점의 "오늘"은 이미 다음
+ * 날이라 그 날짜 큐가 아직 없었고, 다 만들어 둔 한 편이 그대로 버려졌다.
+ *
+ * 어제까지만 본다. 그보다 오래된 것은 소식이 묵어서 올리면 안 되고,
+ * verify 가 자료 날짜를 따로 검사해 한 번 더 막는다.
+ *
+ * @returns {{day:string, files:string[]}}  없으면 files 가 빈 배열
  */
-function nextSlot(today) {
-  const files = pendingSlots(today);
+function nextPendingDay(today, yesterday) {
+  const mine = pendingSlots(today);
+  if (mine.length) return { day: today, files: mine };
+  if (yesterday) {
+    const left = pendingSlots(yesterday);
+    if (left.length) return { day: yesterday, files: left };
+  }
+  return { day: today, files: [] };
+}
+
+/**
+ * 다음에 나갈 슬롯 하나를 읽어 준다. 없으면 null.
+ * @param {string} today
+ * @param {string} [yesterday]  주면 오늘 것이 없을 때 어제 것까지 본다
+ * @returns {{file:string, day:string, slot:string, meta:object, images:string[], caption:string}|null}
+ */
+function nextSlot(today, yesterday) {
+  const { day, files } = nextPendingDay(today, yesterday);
   if (!files.length) return null;
-  const file = path.join(dayDir(today), files[0]);
+  const file = path.join(dayDir(day), files[0]);
   const parsed = parseQueue(fs.readFileSync(file, 'utf8'));
-  return { file, slot: files[0].replace('.md', ''), ...parsed };
+  return { file, day, slot: files[0].replace('.md', ''), ...parsed };
 }
 
 /** 나간 슬롯을 _done 으로 옮겨 이력을 남긴다 */
@@ -62,4 +87,4 @@ function markDone(today, file) {
   return path.join(d, path.basename(file));
 }
 
-module.exports = { parseQueue, pendingSlots, doneCount, nextSlot, markDone, dayDir, doneDir };
+module.exports = { parseQueue, pendingSlots, nextPendingDay, doneCount, nextSlot, markDone, dayDir, doneDir };

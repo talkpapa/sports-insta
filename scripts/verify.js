@@ -12,7 +12,7 @@
  *   3  지금 나갈 것이 없다 — 정상
  */
 const { config, tzDate, loadState, log } = require('./lib/util.js');
-const { nextSlot, doneCount, pendingSlots } = require('./lib/queue.js');
+const { nextSlot, doneCount, nextPendingDay } = require('./lib/queue.js');
 
 const MAX_CAPTION = 2200;
 const MAX_TAGS = 30;
@@ -27,6 +27,7 @@ async function main() {
   const tz = cfg.account?.timezone || 'Asia/Seoul';
   const today = tzDate(0, tz);
   const perDay = cfg.publish?.perDay || 3;
+  const yesterday = tzDate(-1, tz);
 
   const fails = [];
   const check = (ok, msg) => { if (ok) log.ok(msg); else { log.fail(msg); fails.push(msg); } };
@@ -41,14 +42,17 @@ async function main() {
     process.exit(3);
   }
 
-  const pend = pendingSlots(today);
-  if (!pend.length) {
-    log.info(`오늘 남은 큐가 없습니다 (나간 것 ${doneCount(today)}편).`);
+  /* 오늘 것이 없으면 어제 것까지 본다 — 예약 실행이 늦어 자정을 넘긴 날,
+   * 다 만들어 둔 한 편이 그대로 버려진 적이 있다. */
+  const pend = nextPendingDay(today, yesterday);
+  if (!pend.files.length) {
+    log.info(`남은 큐가 없습니다 (오늘 나간 것 ${doneCount(today)}편).`);
     process.exit(3);
   }
 
-  const s = nextSlot(today);
-  log.info(`다음 슬롯 ${s.slot} · ${s.meta.seconds}초 · 남은 ${pend.length}편`);
+  const s = nextSlot(today, yesterday);
+  log.info(`다음 슬롯 ${s.slot} · ${s.meta.seconds}초 · 남은 ${pend.files.length}편`
+    + (s.day !== today ? `  ⟵ ${s.day} 에서 넘어온 것` : ''));
 
   check(postedToday < perDay, `오늘 게시 ${postedToday}편 / 한도 ${perDay}편`);
 
@@ -74,7 +78,6 @@ async function main() {
   check(/📷/.test(s.caption), '사진 출처 표기 있음');
 
   /* ── 자료가 묵지 않았는가 ─────────────────────── */
-  const yesterday = tzDate(-1, tz);
   check([today, yesterday].includes(s.meta.date || ''),
     `자료 날짜 ${s.meta.date} (오늘 ${today} / 어제 ${yesterday})`);
 
