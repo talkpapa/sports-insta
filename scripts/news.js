@@ -79,6 +79,9 @@ const STOP = new Set(`the a an and or but of to in on at for with from by as is 
 function fingerprint(title) {
   return new Set(
     String(title).toLowerCase()
+      /* Álvarez 와 Alvarez 가 다른 낱말로 잡히면 같은 이적 소식을 두 번 올리게 된다.
+       * 악센트를 떼어 같은 글자로 만든다. */
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
       .replace(/[^a-z0-9가-힣\s]/g, ' ')
       .split(/\s+/)
       .filter(w => w.length > 2 && !STOP.has(w))
@@ -90,6 +93,58 @@ function overlap(a, b) {
   let hit = 0;
   for (const w of a) if (b.has(w)) hit++;
   return hit / Math.min(a.size, b.size);
+}
+
+/* 축구 기사라면 어디에나 나오는 말. 이런 낱말이 겹치는 것은 아무 뜻이 없다.
+ * 구단 이름과 선수 이름만 남기려는 것이다. */
+const COMMON = new Set(`transfer transfers deal deals sign signs signed signing signings
+  move moves joins join joined exit leave sold sell buy bid bids fee fees offer offers
+  agree agreed agrees talks agreement contract contracts wages clause loan swap medical
+  club clubs side team squad player players star signing target linked interest
+  season seasons league premier championship football soccer window summer winter
+  manager boss coach head striker forward winger midfielder defender keeper goalkeeper
+  goal goals match game win loss draw price value worth million billion record
+  right left back front new old big massive huge major latest sources report reports
+  explained rise fall thrive actually still first next last another among amid ahead
+  /* 구단 이름을 이루는 조각들. 이것을 빼지 않으면 "Man City" 하나가 이름 둘로 세어져,
+   * 선수가 서로 다른 두 소식이 같은 이야기로 묶인다. */
+  man city united utd fc afc town wanderers rovers albion athletic county
+  liverpool arsenal chelsea tottenham spurs everton newcastle villa palace forest
+  brighton fulham brentford bournemouth wolves burnley leeds sunderland
+  madrid barcelona atletico sevilla valencia bayern dortmund leipzig
+  juventus milan inter napoli roma lazio psg marseille lyon monaco
+  ajax feyenoord porto benfica sporting celtic rangers`.split(/\s+/));
+
+/** 지문에서 곁가지를 걷어낸 것 — 구단·선수 이름만 남는다 */
+function distinctive(fp) {
+  const out = new Set();
+  for (const w of fp) {
+    if (COMMON.has(w)) continue;
+    if (/^[0-9]/.test(w)) continue;        // 120m, 50m 같은 금액
+    out.add(w);
+  }
+  return out;
+}
+
+/**
+ * 같은 이야기인가.
+ *
+ * 겹치는 비율만 보면 안 된다. "Liverpool agree £120m deal in principle for Barcola" 와
+ * "Barcola's rise explained but is he actually right for Liverpool?" 는 겹침이 0.33 이라
+ * 기준(0.6)에 안 걸렸는데, 하필 겹친 둘이 liverpool 과 barcola 였다. 같은 이적을
+ * 두 각도에서 쓴 것이고, 그날 세 편 중 두 편이 같은 선수 이야기로 나갔다.
+ *
+ * 그래서 흔한 말과 구단 이름을 걷어낸다. 남는 것은 대개 선수 이름이고,
+ * 그것이 하나라도 겹치면 같은 이적 이야기다.
+ *
+ * 구단 이름을 빼는 것이 중요하다. 빼지 않으면 "Man City" 가 이름 둘로 세어져
+ * 선수가 서로 다른 두 소식이 한 이야기로 묶인다.
+ */
+function sameStory(a, b) {
+  if (overlap(a, b) >= 0.6) return true;
+  const da = distinctive(a), db = distinctive(b);
+  for (const w of da) if (db.has(w)) return true;
+  return false;
 }
 
 /**
@@ -196,8 +251,8 @@ async function collectNews(want = 5) {
 
     const fp = fingerprint(it.title);
     if (fp.size < 2) continue;                        // 알맹이가 없는 제목
-    if (posted.some(p => overlap(fp, p) >= 0.6)) continue;   // 전에 나간 이야기
-    if (seen.some(p => overlap(fp, p) >= 0.6)) continue;     // 오늘 이미 고른 이야기
+    if (posted.some(p => sameStory(fp, p))) continue;        // 전에 나간 이야기
+    if (seen.some(p => sameStory(fp, p))) continue;          // 오늘 이미 고른 이야기
 
     seen.push(fp);
     picked.push(it);
@@ -286,4 +341,4 @@ async function fetchArticle(url) {
   }
 }
 
-module.exports = { collectNews, fetchArticle, articleText, fingerprint, overlap, FEEDS };
+module.exports = { collectNews, fetchArticle, articleText, fingerprint, overlap, sameStory, distinctive, FEEDS };
