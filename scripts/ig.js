@@ -258,7 +258,7 @@ async function cmdQueue() {
   if (postedToday >= perDay) { log.info(`오늘 ${postedToday}/${perDay}편 완료 — 게시 생략.`); return; }
 
   /* 오늘 것이 없으면 어제 것까지 본다 (자정을 넘겨 도는 날이 있다) */
-  const s = nextSlot(today, tzDate(-1, tz));
+  const s = nextSlot(today);
   if (!s) { log.info(`남은 큐가 없습니다 — 게시 생략.`); return; }
   if (!s.meta.video || !s.caption) throw new Error(`슬롯 ${s.slot} 에 영상 또는 캡션이 없습니다.`);
   if (s.day !== today) log.info(`${s.day} 에서 넘어온 슬롯 ${s.slot} 을 올립니다.`);

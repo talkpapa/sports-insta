@@ -20,6 +20,7 @@ const fs = require('fs');
 const path = require('path');
 const { ROOT, config, env, tzDate, prettyDateEn, loadState, saveState, log } = require('./lib/util.js');
 const { collectNews, fetchArticle } = require('./news.js');
+const { pruneOldQueues } = require('./lib/queue.js');
 const { writeScript } = require('./write.js');
 const { findPhotos, mergeCredits, photoKey } = require('./photo.js');
 const { renderCards } = require('./render.js');
@@ -225,6 +226,11 @@ async function main() {
    * 다 기억하면 며칠 만에 "안 쓴 사진이 없음"이 되어 규칙이 무의미해진다. */
   st.recent_photos = [...usedPhotos].slice(-30);
   saveState(st);
+
+  /* 어제보다 오래된 큐는 지운다. 그 소식은 이미 묵어서 verify 가 어차피 막고,
+   * 남겨두면 대조가 매일 "나가지 못한 큐"로 빨간불을 띄운다. */
+  const droppedQueues = pruneOldQueues(tzDate(-1, tz));
+  if (droppedQueues.length) log.warn(`묵은 큐 정리: ${droppedQueues.join(', ')} — 끝내 못 나갔습니다`);
 
   const pruned = pruneOldReels(cfg.hosting?.keepDays ?? 14);
   if (pruned) log.info(`오래된 영상 ${pruned}일치 정리`);

@@ -44,13 +44,13 @@ async function main() {
 
   /* 오늘 것이 없으면 어제 것까지 본다 — 예약 실행이 늦어 자정을 넘긴 날,
    * 다 만들어 둔 한 편이 그대로 버려진 적이 있다. */
-  const pend = nextPendingDay(today, yesterday);
+  const pend = nextPendingDay(today);
   if (!pend.files.length) {
     log.info(`남은 큐가 없습니다 (오늘 나간 것 ${doneCount(today)}편).`);
     process.exit(3);
   }
 
-  const s = nextSlot(today, yesterday);
+  const s = nextSlot(today);
   log.info(`다음 슬롯 ${s.slot} · ${s.meta.seconds}초 · 남은 ${pend.files.length}편`
     + (s.day !== today ? `  ⟵ ${s.day} 에서 넘어온 것` : ''));
 
