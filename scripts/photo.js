@@ -111,6 +111,8 @@ const openverse = {
       license: (r.license || '').toLowerCase(),
       title: r.title || '',
       author: r.creator || '',
+      /* 태그가 그림을 가려내는 가장 확실한 신호다. 아래 artLooksLikeArt 참고. */
+      tags: (r.tags || []).map(t => String(t.name || t).toLowerCase()),
       source: 'Openverse',
       provider: r.provider || '',
       page: r.foreign_landing_url || '',
@@ -186,6 +188,35 @@ const BAD_TITLE = [
   'vector', 'render', '3d model', 'template', 'mockup', 'seamless pattern',
 ];
 
+/* 태그로 그림을 가려낸다.
+ *
+ * 제목만 보다가 두 번 뚫렸다. 누드 회화가 한 번, 파스텔 소묘가 한 번.
+ * 두 번째 것은 rawpixel 이 올린 "Football boots Arnold Peter Weisz" 였는데,
+ * 제목에 football boots 가 들어 있어 검색어와 겹쳤고 금지어도 없었다.
+ * category 도 소용없었다 — Openverse 는 그것을 photograph 로 분류해 두었다.
+ *
+ * 그런데 태그에는 그대로 적혀 있었다:
+ *   art, football, illustration, paper, person, vintage, vintage paintings
+ * 같은 검색어의 진짜 사진들은 adidas, soccer boots, football pitch 뿐이었다.
+ *
+ * 제목은 사람이 붙인 이름이라 무엇이든 될 수 있지만, 태그는 그 물건이
+ * 무엇인지를 적어 둔 것이라 훨씬 정직하다. */
+const ART_TAGS = [
+  'art', 'artwork', 'fine art', 'illustration', 'illustrations',
+  'painting', 'paintings', 'vintage paintings', 'oil painting',
+  'drawing', 'drawings', 'sketch', 'sketches', 'doodle',
+  'watercolor', 'watercolour', 'pastel', 'charcoal', 'ink',
+  'engraving', 'etching', 'lithograph', 'woodcut', 'print making',
+  'sculpture', 'statue', 'canvas', 'museum', 'gallery',
+  'cartoon', 'clipart', 'clip art', 'vector', 'graphic design',
+  'collage', 'mural', 'portrait painting', 'still life',
+];
+
+function tagsLookLikeArt(tags) {
+  if (!tags || !tags.length) return false;
+  return tags.some(t => ART_TAGS.includes(t));
+}
+
 function titleLooksBad(title) {
   const t = String(title || '').toLowerCase();
   if (BAD_TITLE.some(w => t.includes(w))) return true;
@@ -226,6 +257,7 @@ function rank(list, query = '') {
   const scored = list
     .filter(p => p.url && p.width >= MIN_W && p.height >= MIN_H)
     .filter(p => !titleLooksBad(p.title))
+    .filter(p => !tagsLookLikeArt(p.tags))
     /* 제공처만 봐서는 못 거른다 — rawpixel 같은 곳이 도서관 소장품을 다시 올리기
      * 때문이다. 그때 provider 는 rawpixel 이고 creator 가 libraryofcongress 다.
      * 그래서 둘 다 본다. */
@@ -275,14 +307,47 @@ async function download(c) {
  *      통째로 버리기 아깝다.
  *   ② 검색어 하나로는 안 쓴 사진이 모자랄 때 더 긁어올 자리. "football pitch" 는
  *      쓸 만한 것이 세 장뿐이라, 그 셋을 쓰고 나면 같은 그림이 계속 돌아온다. */
-const WIDE = [
-  'football stadium crowd', 'soccer ball grass', 'football stadium seats',
-  'soccer field lines', 'football grass texture', 'green football field',
-  'soccer stadium aerial', 'stadium seats colourful', 'sports stadium architecture',
-  'football players training', 'empty football stadium', 'football pitch',
-  'goal net close up', 'soccer goal net', 'football goal post',
-  'football boots grass', 'football training ground', 'stadium lights night',
-];
+/* 결이 비슷한 것끼리 묶어 둔다.
+ *
+ * 파일이 서로 다르다고 눈에 달라 보이는 것은 아니다. 잔디 클로즈업 여섯 장은
+ * 전부 다른 사진이어도 스크롤하는 사람에게는 같은 그림이다. 실제로 며칠치가
+ * 초록 잔디로 도배됐다.
+ *
+ * 그래서 한 편 안에서도, 편과 편 사이에서도 결이 바뀌게 한다. */
+const FAMILIES = {
+  잔디:   ['soccer ball grass', 'football grass texture', 'green football field',
+           'soccer field lines', 'football boots grass', 'football pitch'],
+  관중석: ['football stadium seats', 'stadium seats colourful', 'football stadium crowd'],
+  경기장: ['empty football stadium', 'soccer stadium aerial', 'sports stadium architecture',
+           'stadium lights night'],
+  골대:   ['goal net close up', 'soccer goal net', 'football goal post'],
+  훈련:   ['football players training', 'football training ground'],
+};
+
+const WIDE = Object.values(FAMILIES).flat();
+
+/** 이 검색어가 어느 결에 속하는가 */
+function familyOf(query) {
+  for (const [name, list] of Object.entries(FAMILIES)) {
+    if (list.includes(query)) return name;
+  }
+  return '';
+}
+
+/** 결이 번갈아 나오도록 늘어놓는다 — 잔디, 관중석, 골대, 잔디, 경기장 … */
+function interleaveFamilies(startAt = 0) {
+  const groups = Object.values(FAMILIES);
+  const out = [];
+  for (let i = 0; ; i++) {
+    let added = false;
+    for (let g = 0; g < groups.length; g++) {
+      const list = groups[(g + startAt) % groups.length];
+      if (list[i]) { out.push(list[i]); added = true; }
+    }
+    if (!added) break;
+  }
+  return out;
+}
 
 /** 검색어 하나로 후보를 받아 순위대로 돌려준다 */
 async function candidatesFor(query, want) {
@@ -327,8 +392,17 @@ async function findPhotos(query, want = 1, opts = {}) {
   /* 안 쓴 것이 정말 하나도 없을 때를 대비해, 걸러낸 것도 모아 둔다. */
   const reserve = [];
 
-  /* 원래 검색어부터, 그다음 넓은 장면들 */
-  const queries = [query, ...WIDE.filter(q => q !== query)];
+  /* 원래 검색어부터, 그다음 결을 번갈아 가며.
+   *
+   * 그냥 WIDE 순서대로 채우면 앞쪽 잔디 계열에서 세 장이 다 나와 한 편이 통째로
+   * 초록이 된다. 결이 번갈아 나오게 늘어놓고, 시작 지점도 날마다 옮긴다. */
+  const startAt = Math.abs(Number(opts.seed) || 0) % Object.keys(FAMILIES).length;
+  const mineFirst = familyOf(query);
+  const rest = interleaveFamilies(startAt)
+    .filter(q => q !== query)
+    /* 원래 검색어와 같은 결은 뒤로 미룬다 — 한 편 안에서 그림이 바뀌게 */
+    .sort((a, b) => (familyOf(a) === mineFirst ? 1 : 0) - (familyOf(b) === mineFirst ? 1 : 0));
+  const queries = [query, ...rest];
 
   for (const q of queries) {
     if (got.length >= want) break;
@@ -339,10 +413,21 @@ async function findPhotos(query, want = 1, opts = {}) {
     if (!list.length) continue;
     if (q !== query) log.info(`"${q}" 로 더 찾습니다 (${got.length}/${want}장)`);
 
+    /* 검색어 하나에서 몇 장까지 받을 것인가.
+     *
+     * 예전에는 첫 검색어가 세 장을 다 채웠다. 그러면 한 편의 카드 셋이 전부
+     * 같은 결이 된다 — 잔디 클로즈업 세 장, 관중석 세 장. 파일은 달라도
+     * 넘기는 사람 눈에는 같은 그림이고, 실제로 며칠치가 그렇게 나갔다.
+     *
+     * 그래서 한 검색어에서 한 장씩만 받고 다음 결로 넘어간다. 두 장 이상
+     * 필요할 때만 그렇게 하고, 한 장이면 그냥 첫 검색어에서 받는다. */
+    const perQuery = want > 1 ? 1 : want;
+    let fromThis = 0;
+
     /* 필요한 장수의 네 배까지만 두드려 본다. 안 열리는 주소를 끝없이 붙들고
      * 있으면 빌드가 통째로 늦어진다. */
     for (const { c, provider } of list.slice(0, Math.max(6, want * 4))) {
-      if (got.length >= want) break;
+      if (got.length >= want || fromThis >= perQuery) break;
       const k = photoKey(c);
       if (seen.has(k)) continue;
       if (skip.has(k)) { reserve.push({ c, provider }); continue; }
@@ -350,6 +435,7 @@ async function findPhotos(query, want = 1, opts = {}) {
       const buffer = await download(c);
       if (!buffer) continue;
       seen.add(k);
+      fromThis++;
       log.ok(`${provider.name} · ${c.width}×${c.height} · ${c.license} · ${c.author || '작자미상'}`);
       got.push({ buffer, credit: provider.credit(c), meta: c });
     }
@@ -409,4 +495,4 @@ if (require.main === module) {
   })().catch(e => { log.fail(e.message); process.exit(1); });
 }
 
-module.exports = { findPhoto, findPhotos, mergeCredits, photoKey, MIN_W, MIN_H };
+module.exports = { findPhoto, findPhotos, mergeCredits, photoKey, familyOf, FAMILIES, MIN_W, MIN_H };

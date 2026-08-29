@@ -151,7 +151,8 @@ async function main() {
     /* ── ③ 사진 ── */
     /* 카드 수만큼 받는다. 배경이 장마다 바뀌어야 넘길 이유가 생긴다.
      * 모자라면 있는 것을 돌려 쓴다 — 한 장이라도 있으면 카드는 나온다. */
-    const photos = await findPhotos(plan.photo_query, plan.slides.length, { exclude: usedPhotos });
+    const photos = await findPhotos(plan.photo_query, plan.slides.length,
+      { exclude: usedPhotos, seed: Number(today.replace(/-/g, "")) + slot + 1 });
     if (!photos.length) { log.warn(`사진을 못 찾음 ("${plan.photo_query}") — 이 소재는 넘깁니다`); continue; }
     const credit = mergeCredits(photos);
 
