@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { ROOT, config, env, tzDate, loadState, saveState, sleep, log } = require('./lib/util.js');
 const { nextSlot, pendingSlots, markDone } = require('./lib/queue.js');
+const { writeIndex } = require('./lib/page.js');
 
 const API = 'https://graph.instagram.com/v23.0';
 
@@ -269,6 +270,11 @@ async function cmdQueue() {
 
   markDone(s.day, s.file);
   log.ok(`queue/_done/${s.day}/${s.slot}.md 로 옮겼습니다.`);
+
+  /* 상태판을 다시 쓴다. 게시 뒤에 안 고치면 하루 종일 "0/3편"으로 남아
+   * 폰에서 보는 사람이 안 나간 줄 안다. */
+  try { writeIndex(cfg); log.ok('docs/index.html 갱신'); }
+  catch (e) { log.warn('상태판 갱신 실패 — ' + e.message); }
   log.info(`남은 큐 ${pendingSlots(s.day).length}편`);
 }
 

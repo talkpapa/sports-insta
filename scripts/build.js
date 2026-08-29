@@ -21,6 +21,7 @@ const path = require('path');
 const { ROOT, config, env, tzDate, prettyDateEn, loadState, saveState, log } = require('./lib/util.js');
 const { collectNews, fetchArticle } = require('./news.js');
 const { pruneOldQueues } = require('./lib/queue.js');
+const { writeIndex } = require('./lib/page.js');
 const { writeScript } = require('./write.js');
 const { findPhotos, mergeCredits, photoKey } = require('./photo.js');
 const { renderCards } = require('./render.js');
@@ -268,46 +269,6 @@ function queueMarkdown({ id, today, plan, item, credit, video, videoUrl, coverUr
   ].join('\n') + '\n' + caption + '\n';
 }
 
-/** docs/index.html — 만든 릴스를 눈으로 확인하는 보관함 */
-function writeIndex(cfg) {
-  const dir = path.join(ROOT, 'docs', 'reels');
-  const days = fs.existsSync(dir)
-    ? fs.readdirSync(dir).filter(f => /^\d{4}-\d{2}-\d{2}$/.test(f)).sort().reverse()
-    : [];
 
-  const blocks = days.map(day => {
-    const dayDir = path.join(dir, day);
-    const slots = fs.readdirSync(dayDir).filter(s => fs.statSync(path.join(dayDir, s)).isDirectory()).sort();
-    const cells = slots.map(s =>
-      `<figure><video src="reels/${day}/${s}/reel.mp4" poster="reels/${day}/${s}/cover.png" controls preload="none" playsinline></video><figcaption>${s}</figcaption></figure>`
-    ).join('');
-    return `<section><h2>${day} <span>${slots.length}편</span></h2><div class="row">${cells}</div></section>`;
-  }).join('\n');
-
-  const html = `<!doctype html>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex">
-<title>${cfg.account?.brand || '릴스 보관함'}</title>
-<style>
-  :root { color-scheme: dark; }
-  body { margin:0; padding:24px; background:#0B0E14; color:#E7ECF3;
-         font:15px/1.6 system-ui,-apple-system,'Segoe UI',sans-serif; }
-  h1 { font-size:20px; margin:0 0 4px; }
-  p.note { color:#9AA6B8; margin:0 0 28px; }
-  section { margin-bottom:34px; }
-  h2 { font-size:15px; margin:0 0 12px; font-weight:600; }
-  h2 span { color:#9AA6B8; font-weight:400; }
-  .row { display:flex; gap:14px; overflow-x:auto; padding-bottom:8px; }
-  figure { margin:0; }
-  video { height:420px; border-radius:12px; display:block; background:#000; }
-  figcaption { color:#9AA6B8; font-size:12px; margin-top:6px; }
-</style>
-<h1>${cfg.account?.brand || '릴스 보관함'}</h1>
-<p class="note">인스타에 나가는 릴스입니다. 이 주소는 인스타 서버가 영상을 가져가는 데 쓰입니다.</p>
-${blocks || '<p class="note">아직 만든 릴스가 없습니다.</p>'}
-`;
-  fs.writeFileSync(path.join(ROOT, 'docs', 'index.html'), html, 'utf8');
-}
 
 main().catch(e => { log.fail(e.message); process.exit(1); });

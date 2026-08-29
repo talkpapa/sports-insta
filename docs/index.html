@@ -2,29 +2,202 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
-<title>SPORTS NEWS STATION</title>
+<title>SPORTS NEWS STATION 상태</title>
 <style>
   :root { color-scheme: dark; }
-  body { margin:0; padding:24px; background:#0B0E14; color:#E7ECF3;
-         font:15px/1.6 system-ui,-apple-system,'Segoe UI',sans-serif; }
-  h1 { font-size:20px; margin:0 0 4px; }
-  p.note { color:#9AA6B8; margin:0 0 28px; }
-  section { margin-bottom:34px; }
-  h2 { font-size:15px; margin:0 0 12px; font-weight:600; }
-  h2 span { color:#9AA6B8; font-weight:400; }
-  .row { display:flex; gap:14px; overflow-x:auto; padding-bottom:8px; }
-  figure { margin:0; }
-  video { height:420px; border-radius:12px; display:block; background:#000; }
-  figcaption { color:#9AA6B8; font-size:12px; margin-top:6px; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:18px 16px 48px; background:#0B0E14; color:#E7ECF3;
+         font:16px/1.55 system-ui,-apple-system,'Segoe UI',sans-serif;
+         -webkit-text-size-adjust:100%; }
+  header { margin-bottom:20px; }
+  h1 { font-size:19px; margin:0 0 2px; }
+  .stamp { color:#7C8798; font-size:13px; }
+
+  section { border-top:1px solid #1E2531; padding:14px 0 4px; }
+  section.today { border-top:2px solid #F7C63F; }
+  h2 { display:flex; align-items:baseline; justify-content:space-between;
+       gap:10px; font-size:14px; margin:0 0 10px; font-weight:600; }
+  .date { color:#C4CDDA; }
+  .date em { color:#F7C63F; font-style:normal; font-size:12px; margin-left:4px; }
+  .count { font-size:15px; font-variant-numeric:tabular-nums; }
+  .count.full { color:#57C98A; }
+  .count.part { color:#F7C63F; }
+  .count.none { color:#7C8798; }
+
+  ul { list-style:none; margin:0; padding:0; }
+  li { display:flex; align-items:baseline; gap:10px; padding:6px 0;
+       border-bottom:1px solid #141A24; font-size:14px; }
+  li:last-child { border-bottom:0; }
+  .slot { color:#7C8798; font-variant-numeric:tabular-nums; min-width:22px; }
+  .time { color:#9AA6B8; font-variant-numeric:tabular-nums; min-width:44px; }
+  li.ok .time { color:#57C98A; }
+  li a { color:#E7ECF3; text-decoration:none; border-bottom:1px solid #2A3342;
+         overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .muted { color:#7C8798; }
+  .short { color:#7C8798; font-size:13px; margin:6px 0 0; }
+
+  h3 { font-size:13px; color:#9AA6B8; margin:20px 0 8px; font-weight:600; }
+  .row { display:flex; gap:12px; overflow-x:auto; padding-bottom:8px;
+         scroll-snap-type:x mandatory; }
+  figure { margin:0; scroll-snap-align:start; }
+  video { height:300px; border-radius:12px; display:block; background:#000; }
+  figcaption { color:#7C8798; font-size:12px; margin-top:5px; }
+  .reels-title { border-top:1px solid #1E2531; padding-top:18px; margin-top:24px; }
 </style>
-<h1>SPORTS NEWS STATION</h1>
-<p class="note">인스타에 나가는 릴스입니다. 이 주소는 인스타 서버가 영상을 가져가는 데 쓰입니다.</p>
-<section><h2>2026-08-29 <span>3편</span></h2><div class="row"><figure><video src="reels/2026-08-29/01/reel.mp4" poster="reels/2026-08-29/01/cover.png" controls preload="none" playsinline></video><figcaption>01</figcaption></figure><figure><video src="reels/2026-08-29/02/reel.mp4" poster="reels/2026-08-29/02/cover.png" controls preload="none" playsinline></video><figcaption>02</figcaption></figure><figure><video src="reels/2026-08-29/03/reel.mp4" poster="reels/2026-08-29/03/cover.png" controls preload="none" playsinline></video><figcaption>03</figcaption></figure></div></section>
-<section><h2>2026-08-28 <span>3편</span></h2><div class="row"><figure><video src="reels/2026-08-28/01/reel.mp4" poster="reels/2026-08-28/01/cover.png" controls preload="none" playsinline></video><figcaption>01</figcaption></figure><figure><video src="reels/2026-08-28/02/reel.mp4" poster="reels/2026-08-28/02/cover.png" controls preload="none" playsinline></video><figcaption>02</figcaption></figure><figure><video src="reels/2026-08-28/03/reel.mp4" poster="reels/2026-08-28/03/cover.png" controls preload="none" playsinline></video><figcaption>03</figcaption></figure></div></section>
-<section><h2>2026-08-27 <span>2편</span></h2><div class="row"><figure><video src="reels/2026-08-27/01/reel.mp4" poster="reels/2026-08-27/01/cover.png" controls preload="none" playsinline></video><figcaption>01</figcaption></figure><figure><video src="reels/2026-08-27/03/reel.mp4" poster="reels/2026-08-27/03/cover.png" controls preload="none" playsinline></video><figcaption>03</figcaption></figure></div></section>
-<section><h2>2026-08-26 <span>3편</span></h2><div class="row"><figure><video src="reels/2026-08-26/01/reel.mp4" poster="reels/2026-08-26/01/cover.png" controls preload="none" playsinline></video><figcaption>01</figcaption></figure><figure><video src="reels/2026-08-26/02/reel.mp4" poster="reels/2026-08-26/02/cover.png" controls preload="none" playsinline></video><figcaption>02</figcaption></figure><figure><video src="reels/2026-08-26/03/reel.mp4" poster="reels/2026-08-26/03/cover.png" controls preload="none" playsinline></video><figcaption>03</figcaption></figure></div></section>
-<section><h2>2026-08-25 <span>3편</span></h2><div class="row"><figure><video src="reels/2026-08-25/01/reel.mp4" poster="reels/2026-08-25/01/cover.png" controls preload="none" playsinline></video><figcaption>01</figcaption></figure><figure><video src="reels/2026-08-25/02/reel.mp4" poster="reels/2026-08-25/02/cover.png" controls preload="none" playsinline></video><figcaption>02</figcaption></figure><figure><video src="reels/2026-08-25/03/reel.mp4" poster="reels/2026-08-25/03/cover.png" controls preload="none" playsinline></video><figcaption>03</figcaption></figure></div></section>
-<section><h2>2026-08-24 <span>2편</span></h2><div class="row"><figure><video src="reels/2026-08-24/01/reel.mp4" poster="reels/2026-08-24/01/cover.png" controls preload="none" playsinline></video><figcaption>01</figcaption></figure><figure><video src="reels/2026-08-24/02/reel.mp4" poster="reels/2026-08-24/02/cover.png" controls preload="none" playsinline></video><figcaption>02</figcaption></figure></div></section>
-<section><h2>2026-08-23 <span>3편</span></h2><div class="row"><figure><video src="reels/2026-08-23/01/reel.mp4" poster="reels/2026-08-23/01/cover.png" controls preload="none" playsinline></video><figcaption>01</figcaption></figure><figure><video src="reels/2026-08-23/02/reel.mp4" poster="reels/2026-08-23/02/cover.png" controls preload="none" playsinline></video><figcaption>02</figcaption></figure><figure><video src="reels/2026-08-23/03/reel.mp4" poster="reels/2026-08-23/03/cover.png" controls preload="none" playsinline></video><figcaption>03</figcaption></figure></div></section>
-<section><h2>2026-08-22 <span>3편</span></h2><div class="row"><figure><video src="reels/2026-08-22/01/reel.mp4" poster="reels/2026-08-22/01/cover.png" controls preload="none" playsinline></video><figcaption>01</figcaption></figure><figure><video src="reels/2026-08-22/02/reel.mp4" poster="reels/2026-08-22/02/cover.png" controls preload="none" playsinline></video><figcaption>02</figcaption></figure><figure><video src="reels/2026-08-22/03/reel.mp4" poster="reels/2026-08-22/03/cover.png" controls preload="none" playsinline></video><figcaption>03</figcaption></figure></div></section>
-<section><h2>2026-08-21 <span>3편</span></h2><div class="row"><figure><video src="reels/2026-08-21/01/reel.mp4" poster="reels/2026-08-21/01/cover.png" controls preload="none" playsinline></video><figcaption>01</figcaption></figure><figure><video src="reels/2026-08-21/02/reel.mp4" poster="reels/2026-08-21/02/cover.png" controls preload="none" playsinline></video><figcaption>02</figcaption></figure><figure><video src="reels/2026-08-21/03/reel.mp4" poster="reels/2026-08-21/03/cover.png" controls preload="none" playsinline></video><figcaption>03</figcaption></figure></div></section>
+
+<header>
+  <h1>@sportsnewsstation 릴스</h1>
+  <div class="stamp">08. 29. 14:52 기준 · 하루 3편</div>
+</header>
+
+
+  <section class="today">
+    <h2>
+      <span class="date">2026-08-29 <em>오늘</em></span>
+      <span class="count part">2 / 3</span>
+    </h2>
+    <ul>
+      <li class="ok">
+        <span class="slot">01</span>
+        <span class="time">11:34</span>
+        <a href="https://www.instagram.com/reel/Dcm4BDpEcs-/" target="_blank" rel="noopener">Ordonez's move to Palace in doubt after medical</a>
+      </li>
+      <li class="ok">
+        <span class="slot">02</span>
+        <span class="time">14:01</span>
+        <a href="https://www.instagram.com/reel/DcnIyUwihCn/" target="_blank" rel="noopener">Football Daily | Why the transfer window is actually a large</a>
+      </li>
+      <li class="wait">
+        <span class="slot">03</span>
+        <span class="time">대기</span>
+        <span class="muted">아직 안 나갔습니다</span>
+      </li></ul>
+    
+  </section>
+
+  <section class="">
+    <h2>
+      <span class="date">2026-08-28</span>
+      <span class="count full">3 / 3</span>
+    </h2>
+    <ul>
+      <li class="ok">
+        <span class="slot">01</span>
+        <span class="time">16:08</span>
+        <a href="https://www.instagram.com/reel/DckyjPSAqmB/" target="_blank" rel="noopener">Chelsea agree £7.5m fee for Villa's Martinez</a>
+      </li>
+      <li class="ok">
+        <span class="slot">02</span>
+        <span class="time">19:22</span>
+        <a href="https://www.instagram.com/reel/DclIs6XgUzY/" target="_blank" rel="noopener">Ipswich sign Argentina World Cup winner Palacios</a>
+      </li>
+      <li class="ok">
+        <span class="slot">03</span>
+        <span class="time">21:01</span>
+        <a href="https://www.instagram.com/reel/DclUB8KgU6R/" target="_blank" rel="noopener">The big transfer stories to follow in final week of summer w</a>
+      </li></ul>
+    
+  </section>
+
+  <section class="">
+    <h2>
+      <span class="date">2026-08-27</span>
+      <span class="count part">1 / 3</span>
+    </h2>
+    <ul>
+      <li class="ok">
+        <span class="slot">01</span>
+        <span class="time">19:34</span>
+        <a href="https://www.instagram.com/reel/DcilRbaCRqK/" target="_blank" rel="noopener">Liverpool agree £120m deal in principle for Barcola</a>
+      </li></ul>
+    <p class="short">이날은 소재가 모자라 다 채우지 못했습니다.</p>
+  </section>
+
+  <section class="">
+    <h2>
+      <span class="date">2026-08-26</span>
+      <span class="count full">3 / 3</span>
+    </h2>
+    <ul>
+      <li class="ok">
+        <span class="slot">01</span>
+        <span class="time">13:28</span>
+        <a href="https://www.instagram.com/reel/DcfWl0GjeAl/" target="_blank" rel="noopener">Delap heads to Forest for £50m as Chelsea open talks to sell</a>
+      </li>
+      <li class="ok">
+        <span class="slot">02</span>
+        <span class="time">17:26</span>
+        <a href="https://www.instagram.com/reel/Dcfx2wlCSKF/" target="_blank" rel="noopener">Forest agree £50m deal for Chelsea striker Delap</a>
+      </li>
+      <li class="ok">
+        <span class="slot">03</span>
+        <span class="time">20:56</span>
+        <a href="https://www.instagram.com/reel/DcgJ6pMAGms/" target="_blank" rel="noopener">Manchester United confirm Carlos Baleba signing as midfield </a>
+      </li></ul>
+    
+  </section>
+
+  <section class="">
+    <h2>
+      <span class="date">2026-08-25</span>
+      <span class="count part">2 / 3</span>
+    </h2>
+    <ul>
+      <li class="ok">
+        <span class="slot">01</span>
+        <span class="time">14:09</span>
+        <a href="https://www.instagram.com/reel/Dcc2kTuiOFE/" target="_blank" rel="noopener">Nottingham Forest close in on signing Liam Delap from Chelse</a>
+      </li>
+      <li class="ok">
+        <span class="slot">02</span>
+        <span class="time">20:02</span>
+        <a href="https://www.instagram.com/reel/Dcde-ltknVu/" target="_blank" rel="noopener">Chelsea’s front three dazzle as they edge out Fulham in derb</a>
+      </li></ul>
+    <p class="short">이날은 소재가 모자라 다 채우지 못했습니다.</p>
+  </section>
+
+  <section class="">
+    <h2>
+      <span class="date">2026-08-24</span>
+      <span class="count part">2 / 3</span>
+    </h2>
+    <ul>
+      <li class="ok">
+        <span class="slot">01</span>
+        <span class="time">14:28</span>
+        <a href="https://www.instagram.com/reel/DcaT2_NlRNx/" target="_blank" rel="noopener">Manchester City agree deal worth up to €100m for Lille’s Ayy</a>
+      </li>
+      <li class="ok">
+        <span class="slot">02</span>
+        <span class="time">20:05</span>
+        <a href="https://www.instagram.com/reel/Dca6c3REjTQ/" target="_blank" rel="noopener">Mateta’s Palace dispute deepens after losing appeals to end </a>
+      </li></ul>
+    <p class="short">이날은 소재가 모자라 다 채우지 못했습니다.</p>
+  </section>
+
+  <section class="">
+    <h2>
+      <span class="date">2026-08-23</span>
+      <span class="count full">3 / 3</span>
+    </h2>
+    <ul>
+      <li class="ok">
+        <span class="slot">01</span>
+        <span class="time">14:07</span>
+        <a href="https://www.instagram.com/reel/DcXswhol9_i/" target="_blank" rel="noopener">Kayode seals emphatic Brentford victory in wake-up call for </a>
+      </li>
+      <li class="ok">
+        <span class="slot">02</span>
+        <span class="time">19:03</span>
+        <a href="https://www.instagram.com/reel/DcYOiR9FG15/" target="_blank" rel="noopener">‘Enzo is a Chelsea player,’ says Alonso but doesn’t guarante</a>
+      </li>
+      <li class="ok">
+        <span class="slot">03</span>
+        <span class="time">22:52</span>
+        <a href="https://www.instagram.com/reel/DcYovZ4knXe/" target="_blank" rel="noopener">Frugal or foolish? Manchester United may regret not backing </a>
+      </li></ul>
+    
+  </section>
+
+<div class="reels-title"><h3 style="margin-top:0">최근 영상</h3></div>
+<h3>2026-08-29</h3><div class="row"><figure><video src="reels/2026-08-29/01/reel.mp4" poster="reels/2026-08-29/01/cover.png" controls preload="none" playsinline></video><figcaption>01</figcaption></figure><figure><video src="reels/2026-08-29/02/reel.mp4" poster="reels/2026-08-29/02/cover.png" controls preload="none" playsinline></video><figcaption>02</figcaption></figure><figure><video src="reels/2026-08-29/03/reel.mp4" poster="reels/2026-08-29/03/cover.png" controls preload="none" playsinline></video><figcaption>03</figcaption></figure></div><h3>2026-08-28</h3><div class="row"><figure><video src="reels/2026-08-28/01/reel.mp4" poster="reels/2026-08-28/01/cover.png" controls preload="none" playsinline></video><figcaption>01</figcaption></figure><figure><video src="reels/2026-08-28/02/reel.mp4" poster="reels/2026-08-28/02/cover.png" controls preload="none" playsinline></video><figcaption>02</figcaption></figure><figure><video src="reels/2026-08-28/03/reel.mp4" poster="reels/2026-08-28/03/cover.png" controls preload="none" playsinline></video><figcaption>03</figcaption></figure></div><h3>2026-08-27</h3><div class="row"><figure><video src="reels/2026-08-27/01/reel.mp4" poster="reels/2026-08-27/01/cover.png" controls preload="none" playsinline></video><figcaption>01</figcaption></figure><figure><video src="reels/2026-08-27/03/reel.mp4" poster="reels/2026-08-27/03/cover.png" controls preload="none" playsinline></video><figcaption>03</figcaption></figure></div>
