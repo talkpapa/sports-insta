@@ -217,9 +217,22 @@ function tagsLookLikeArt(tags) {
   return tags.some(t => ART_TAGS.includes(t));
 }
 
+/* 축구 계정이므로 다른 종목이 들어오면 안 된다.
+ *
+ * 검색어의 낱말이 하나만 걸려도 통과하는 규칙이라 이런 것이 새어 들어온다 —
+ * "goal net close up" 을 찾았더니 "basketball hoop and net" 이 왔고,
+ * "football boots" 에는 "Rugby players wearing Nike boots" 가 왔다.
+ * 제목에 다른 종목 이름이 있으면 그냥 버린다. */
+const OTHER_SPORTS = [
+  'basketball', 'baseball', 'tennis', 'rugby', 'cricket', 'hockey',
+  'volleyball', 'golf', 'badminton', 'handball', 'boxing', 'swimming',
+  'athletics', 'cycling', 'skiing', 'skating', 'american football', 'nfl',
+];
+
 function titleLooksBad(title) {
   const t = String(title || '').toLowerCase();
   if (BAD_TITLE.some(w => t.includes(w))) return true;
+  if (OTHER_SPORTS.some(w => t.includes(w))) return true;
 
   /* 제목에 옛 연도가 박혀 있으면 기록사진이다. 실제로 "Oak Ridge Football 1947" 이
    * 오늘 NFL 소식의 배경으로 뽑혔다. 제공처 목록으로는 안 걸린다 — 정부기관·대학이
