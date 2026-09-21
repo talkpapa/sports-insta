@@ -131,6 +131,8 @@ async function main() {
   /* 원고를 쓰다 던진 오류의 수. 모델이 "이 소재는 쓰지 말자"고 한 것과는 다르다.
    * 앞의 것은 고장이고 뒤의 것은 정상 판단이라, 끝에서 둘을 갈라 다뤄야 한다. */
   let errors = 0;
+  /* 모델이 "이 소재는 쓸 수 없다"고 정상 판단한 횟수. 끝에서 오류와 갈라 쓴다. */
+  let skips = 0;
 
   for (const item of news) {
     if (made.length >= target) break;
@@ -146,7 +148,7 @@ async function main() {
     try { plan = await writeScript(item); }
     catch (e) { errors++; log.warn(`원고 실패 — ${e.message.split('\n')[0]}`); continue; }
 
-    if (plan.skip) { log.info(`건너뜀 — ${plan.skip_reason}`); continue; }
+    if (plan.skip) { skips++; log.info(`건너뜀 — ${plan.skip_reason}`); continue; }
     log.ok(`원고 · ${plan.slides.map(s => s.headline).join(' / ')}`);
 
     /* ── ③ 사진 ── */
@@ -213,14 +215,26 @@ async function main() {
      * 전에는 둘 다 "실패 아님"으로 끝냈다. 그래서 서버에 GEMINI_API_KEY 가 전달되지
      * 않아 여덟 건이 내리 터진 날에도 워크플로가 초록불로 끝났고, 아무도 몰랐다.
      * 무인으로 도는 파이프라인에서 조용한 성공은 조용한 실패보다 나쁘다. */
-    if (errors) {
+    /* 다만 "오류가 하나라도 있으면 실패" 는 너무 거칠다.
+     *
+     * 9월 20일에 후보 다섯 건 중 넷이 "이적 내용이 없다"며 정상적으로 걸러졌고,
+     * 나머지 하나가 Gemini 503 을 맞았다. 그날의 진짜 사정은 소재가 없었다는
+     * 것인데, 일시 장애 하나 때문에 빌드가 통째로 실패로 끝났다.
+     *
+     * 그래서 정상적으로 건너뛴 것이 하나도 없이 전부 오류였을 때만 고장으로 본다.
+     * 그때는 키가 빠졌다거나 하는 진짜 문제일 가능성이 높다. */
+    if (errors && !skips) {
       throw new Error(`${errors}건이 모두 오류로 끝났습니다 — 위 메시지를 보십시오.\n` +
         '   (소재가 없어서가 아니라 무언가 고장난 것입니다. 시크릿·키를 먼저 확인하십시오.)');
+    }
+    if (errors) {
+      log.warn(`오류 ${errors}건 · 정상 건너뜀 ${skips}건 — 오늘은 쓸 만한 소재가 없었습니다(실패 아님).`);
+      return;
     }
     log.warn('쓸 만한 소재가 없었습니다 — 큐를 만들지 않고 끝냅니다(실패 아님).');
     return;
   }
-  if (errors) log.warn(`${errors}건은 오류로 건너뛰었습니다 (만든 것 ${made.length}편).`);
+  if (errors) log.warn(`오류 ${errors}건은 건너뛰었습니다 (만든 것 ${made.length}편 · 정상 건너뜀 ${skips}건).`);
 
   /* 나간 이야기를 기억해 둔다 — 내일 같은 소식을 또 올리지 않기 위해 */
   st.recent_titles = [...(st.recent_titles || []), ...made.map(m => m.item.title)].slice(-60);

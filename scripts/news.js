@@ -13,7 +13,7 @@
  * 여러 매체가 같은 사건을 동시에 낸다. 제목에서 핵심 낱말만 뽑아 견주고,
  * 이미 나간 것과 겹치면 버린다. 같은 소식을 이틀 연속 올리면 신뢰를 잃는다.
  */
-const { config, loadState, getJSON, log } = require('./lib/util.js');
+const { config, loadState, tzDate, getJSON, log } = require('./lib/util.js');
 
 /* 언론사가 공개한 RSS. 여기서 받는 것은 제목·요약·링크뿐이다.
  *
@@ -174,9 +174,19 @@ async function collectNews(want = 5) {
   /* 나간 이야기의 지문. 두 곳을 다 본다 —
    * posted_log 는 실제로 게시된 것, recent_titles 는 만들어 둔 것.
    * 만들어 두고 아직 안 나간 것도 중복으로 쳐야 같은 소식이 두 번 실리지 않는다. */
+  /* 견줄 대상은 "최근"으로 좁힌다.
+   *
+   * "이름이 하나라도 겹치면 같은 이야기" 규칙은 같은 이적을 두 각도에서 쓴 기사를
+   * 잡으려고 넣은 것인데, 비교 대상이 최근 90건이면 3주 전에 한 번 스친 이름까지
+   * 영원히 막는다. 실제로 9월 21일에 이적 기사 26건 중 20건이 이 때문에 죽어
+   * 하루치를 못 채웠다 — 이적창이 닫혀 소재가 줄어든 시기에 특히 치명적이다.
+   *
+   * 같은 선수가 3주 뒤에 다시 뉴스가 되는 것은 새 이야기다. 일주일만 본다. */
+  const since = tzDate(-7, cfg.account?.timezone || 'Asia/Seoul');
   const posted = [
-    ...(st.posted_log || []).slice(-30).map(p => p.title || ''),
-    ...(st.recent_titles || []).slice(-60),
+    ...(st.posted_log || []).filter(p => (p.date || '') >= since).map(p => p.title || ''),
+    /* 만들어 두고 아직 안 나간 것 — 며칠치면 충분하다 */
+    ...(st.recent_titles || []).slice(-9),
   ].filter(Boolean).map(fingerprint);
 
   /* 관심 낱말로 거르기. 비어 있으면 거르지 않는다.
